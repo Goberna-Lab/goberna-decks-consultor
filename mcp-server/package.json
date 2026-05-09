@@ -1,7 +1,7 @@
 {
   "name": "goberna-mcp",
-  "version": "0.1.0",
-  "description": "MCP server que expone los candidatos del consultor político a Claude Code",
+  "version": "0.3.0",
+  "description": "MCP server Goberna — candidatos, decks y análisis para Claude Desktop / Code",
   "type": "module",
   "bin": {
     "goberna-mcp": "./index.mjs"

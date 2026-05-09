@@ -1,6 +1,15 @@
 #!/bin/bash
-# Goberna Decks · Setup Consultor (Mac)
+# Goberna Decks · Setup Consultor (Mac · Claude Desktop)
 # Uso: curl -fsSL https://electoral.goberna.club/setup-mac.sh | bash
+#
+# Hace todo en una sola corrida:
+#   1. Homebrew, Node, Git
+#   2. Instala Claude Desktop (cask)
+#   3. Clona el kit de presentaciones
+#   4. Instala el MCP server
+#   5. Configura Claude Desktop para que cargue el MCP `goberna`
+#   6. Te pide tu token y lo guarda
+#   7. Te dice cómo arrancar
 
 set -e
 
@@ -15,7 +24,7 @@ if ! xcode-select -p &>/dev/null; then
   echo "▸ Instalando Xcode Command Line Tools (puede tardar)..."
   xcode-select --install || true
   echo ""
-  echo "  ⚠️  Cuando termine la instalación de Xcode, volvé a correr este comando."
+  echo "  ⚠️  Cuando termine la instalación, volvé a correr este comando."
   exit 0
 fi
 echo "✓ Xcode CLI ok"
@@ -25,7 +34,6 @@ if ! command -v brew &>/dev/null; then
   echo "▸ Instalando Homebrew..."
   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 fi
-# Asegurar que brew esté en el PATH para esta sesión
 if [[ -f /opt/homebrew/bin/brew ]]; then
   eval "$(/opt/homebrew/bin/brew shellenv)"
 elif [[ -f /usr/local/bin/brew ]]; then
@@ -38,101 +46,117 @@ echo "▸ Instalando Node.js + Git..."
 brew install node git || true
 echo "✓ Node $(node --version) · Git $(git --version | head -1)"
 
-# 4. Claude Code
-echo "▸ Instalando Claude Code..."
-npm install -g @anthropic-ai/claude-code
-echo "✓ Claude Code ok"
+# 4. Claude Desktop (cask oficial Anthropic)
+if [[ ! -d "/Applications/Claude.app" ]]; then
+  echo "▸ Instalando Claude Desktop..."
+  brew install --cask claude || {
+    echo ""
+    echo "  ⚠️  No pude instalar Claude Desktop automáticamente."
+    echo "     Descargalo manualmente de https://claude.ai/download"
+    echo "     Cuando lo tengas instalado, volvé a correr este script."
+    open https://claude.ai/download
+    exit 1
+  }
+fi
+echo "✓ Claude Desktop instalado en /Applications/Claude.app"
 
 # 5. Clonar / actualizar repo
 WORKDIR="$HOME/Goberna/decks"
 mkdir -p "$HOME/Goberna"
 if [[ -d "$WORKDIR/.git" ]]; then
-  echo "▸ Actualizando repo existente en $WORKDIR..."
+  echo "▸ Actualizando kit existente en $WORKDIR..."
   cd "$WORKDIR" && git pull --ff-only
 else
-  echo "▸ Clonando repo a $WORKDIR..."
+  echo "▸ Clonando kit a $WORKDIR..."
   git clone https://github.com/Goberna-Lab/goberna-decks-consultor.git "$WORKDIR"
 fi
-echo "✓ Repo en $WORKDIR"
+echo "✓ Kit en $WORKDIR"
 
-# 6. Instalar deps del MCP server local (dentro del repo clonado)
-echo "▸ Instalando MCP server (goberna-mcp)..."
+# 6. Instalar deps del MCP server
+echo "▸ Instalando MCP server..."
 (cd "$WORKDIR/mcp-server" && npm install --silent)
 echo "✓ MCP server listo"
 
-# 7. Token de Goberna (para que el MCP pueda llamar a la API)
+# 7. Token de Goberna
 TOKEN_DIR="$HOME/.config/goberna"
 TOKEN_FILE="$TOKEN_DIR/token"
 mkdir -p "$TOKEN_DIR"
 chmod 700 "$TOKEN_DIR"
-if [[ ! -f "$TOKEN_FILE" ]]; then
+if [[ ! -f "$TOKEN_FILE" ]] || [[ ! -s "$TOKEN_FILE" ]]; then
   echo ""
   echo "════════════════════════════════════════════════"
   echo "  TOKEN GOBERNA"
   echo "════════════════════════════════════════════════"
   echo ""
-  echo "  Pedile al admin de Goberna que te genere tu token de consultor."
-  echo "  Cuando lo tengas, pegalo acá (vas a verlo escondido — terminá con Enter):"
+  echo "  Pegá el token que te dio el admin (vas a verlo escondido)."
+  echo "  Termina con Enter:"
   echo ""
   read -rsp "  Token: " GOBERNA_TOKEN
   echo ""
   if [[ -n "$GOBERNA_TOKEN" ]]; then
     echo "$GOBERNA_TOKEN" > "$TOKEN_FILE"
     chmod 600 "$TOKEN_FILE"
-    echo "✓ Token guardado en $TOKEN_FILE"
+    echo "✓ Token guardado"
   else
-    echo "⚠️  Sin token. Vas a poder generar decks pero no listar candidatos hasta que lo pongas."
-    echo "    Cuando lo tengas: echo 'tu-token' > $TOKEN_FILE"
+    echo "⚠️  Sin token. Pegalo manualmente después en: $TOKEN_FILE"
   fi
 else
   echo "✓ Token ya existe en $TOKEN_FILE"
 fi
 
-# 8. Registrar MCP server en Claude Code
-echo "▸ Registrando MCP en Claude Code..."
-claude mcp add --scope user goberna node "$WORKDIR/mcp-server/index.mjs" 2>/dev/null || \
-  claude mcp add goberna node "$WORKDIR/mcp-server/index.mjs" 2>/dev/null || \
-  echo "  ⚠️  No pude registrar el MCP automáticamente. Hacelo manual:"
-echo "✓ MCP registrado (verificalo con: claude mcp list)"
+# 8. Configurar Claude Desktop para cargar el MCP `goberna`
+CLAUDE_CFG_DIR="$HOME/Library/Application Support/Claude"
+CLAUDE_CFG="$CLAUDE_CFG_DIR/claude_desktop_config.json"
+mkdir -p "$CLAUDE_CFG_DIR"
 
-# 9. Alias `deck` y `deck-preview` en shell rc
-SHELL_RC="$HOME/.zshrc"
-[[ "$SHELL" == *"bash"* ]] && SHELL_RC="$HOME/.bashrc"
-touch "$SHELL_RC"
+# Patch idempotente: agregamos/reemplazamos solo la entry `goberna`
+node --experimental-vm-modules - <<NODE
+const fs = require('node:fs');
+const path = ${JSON.stringify("$CLAUDE_CFG")};
+const mcpPath = ${JSON.stringify("$WORKDIR/mcp-server/index.mjs")};
+const tokenPath = ${JSON.stringify("$TOKEN_FILE")};
 
-if ! grep -q "# === Goberna Decks ===" "$SHELL_RC"; then
-  cat >> "$SHELL_RC" <<'EOF'
+let cfg = {};
+try {
+  cfg = JSON.parse(fs.readFileSync(path, 'utf8'));
+} catch { /* archivo nuevo */ }
 
-# === Goberna Decks ===
-alias deck='cd ~/Goberna/decks && claude'
-alias deck-preview='cd ~/Goberna/decks && npm start'
-alias deck-update='cd ~/Goberna/decks && git pull --ff-only'
-EOF
-  echo "✓ Aliases agregados a $SHELL_RC"
-else
-  echo "✓ Aliases ya existen en $SHELL_RC"
-fi
+cfg.mcpServers = cfg.mcpServers || {};
+cfg.mcpServers.goberna = {
+  command: 'node',
+  args: [mcpPath],
+  env: {
+    GOBERNA_API_URL: 'https://electoral.goberna.club',
+    GOBERNA_TOKEN_PATH: tokenPath,
+  },
+};
 
+fs.writeFileSync(path, JSON.stringify(cfg, null, 2));
+console.log('✓ MCP goberna registrado en', path);
+NODE
+
+# 9. Final
 echo ""
 echo "════════════════════════════════════════════════"
-echo "  ✅  Setup completo"
+echo "  ✅  TODO LISTO"
 echo "════════════════════════════════════════════════"
 echo ""
-echo "  PRÓXIMOS PASOS:"
+echo "  PASOS PARA ARRANCAR:"
 echo ""
-echo "  1. Cerrá esta Terminal y abrí una nueva"
-echo "     (para que los aliases 'deck' funcionen)"
+echo "  1. Cerrá Claude Desktop completamente (CMD+Q, no solo cerrar la ventana)"
 echo ""
-echo "  2. Autenticá Claude:"
-echo "     claude /login"
+echo "  2. Abrí Claude Desktop de nuevo"
 echo ""
-echo "  3. Para arrancar a generar un deck, tipeá:"
-echo "     deck"
+echo "  3. Empezá un chat nuevo y escribí esto:"
 echo ""
-echo "  4. Para ver tus decks en el browser, en otra terminal:"
-echo "     deck-preview"
-echo "     (después abrí http://localhost:3000)"
+echo "     ────────────────────────────────────────"
+echo "     Listame mis candidatos de Goberna y"
+echo "     armemos un diagnóstico para uno de ellos."
+echo "     ────────────────────────────────────────"
 echo ""
-echo "  5. Si Goberna actualiza el kit, corré:"
-echo "     deck-update"
+echo "  Claude va a usar el MCP \`goberna\` para traer tu cartera"
+echo "  de candidatos. Vas a poder verlos en la lista, elegir uno"
+echo "  y trabajar la presentación."
+echo ""
+echo "  Si necesitás más detalle, abrí: $WORKDIR/docs/consultor.md"
 echo ""
