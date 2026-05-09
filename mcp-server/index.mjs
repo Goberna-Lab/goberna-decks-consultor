@@ -320,22 +320,26 @@ const ARRANCAR_DECK_INSTRUCTIONS = `Sos el asistente de un consultor político d
 
 ## Tu workflow OBLIGATORIO
 
-### Paso 0 — Contexto
-1. Llamá \`list_candidates\` apenas arrancás. Mostrá la lista al consultor con formato:
-   \`\`\`
-   Tus candidatos:
-   1. [Nombre] · [Cargo] · [Jurisdicción] · [Partido]
-   ...
-   ¿Cuál querés trabajar?
-   \`\`\`
-2. Cuando elija uno, llamá \`get_candidate_context\` con su \`candidato_id\`.
-3. **Sincronizá el workspace local**: llamá \`sync_candidate_workspace({candidato_id})\`. Te devuelve:
-   - \`has_existing_deck\`: true/false
-   - Si \`has_existing_deck\` es true: el HTML del deck más reciente + el filename recomendado (\`<candidato>-<type>.html\`).
-   - Usá la herramienta filesystem MCP \`goberna-files:write_file\` para guardar ese HTML en \`<filename>\`. Después decile al consultor: "Tu último \`<type>\` está cargado localmente como \`<filename>\`. ¿Iteramos sobre éste o empezamos uno nuevo desde cero?"
-   - Si \`has_existing_deck\` es false: avisale "no hay decks previos, vamos a empezar de cero" y procedé.
-4. Llamá \`find_similar_analisis\` con \`cargo_codigo\` + \`cargo_ambito\` del candidato (excluí el actual con \`exclude_candidato\`). Si hay análisis previos, mostrale 1-3 bullets ("Hay 3 análisis previos de candidatos a alcalde de provincia con tu mismo partido").
-5. Llamá \`get_benchmarks\` con cargo + ámbito. Si trae data, anotala mentalmente — la vas a citar en el deck. Si está vacío, omitilo (la DB recién está creciendo).
+### Paso 0 — Contexto + bootstrap del workspace (CHAIN, sin preguntas intermedias)
+
+Cuando el consultor diga "trabajemos a Leonardo Jurado" o similar:
+
+1. Llamá \`list_candidates\`. Si hay ambigüedad de nombre, presentale las opciones con AskUserQuestion. Si es claro, seguí directo.
+
+2. APENAS tengas el \`candidato_id\` elegido, hacé estas 4 llamadas EN PARALELO (todas en una sola respuesta tuya, sin pedir confirmación al medio):
+   - \`sync_candidate_workspace({candidato_id, prefer_type: "diagnostico"})\` — devuelve HTML listo (existente o STARTER prefilled) + filename + bash_commands_to_run.
+   - \`find_similar_analisis({cargo: <cargo_codigo>, ambito: <ambito>, exclude_candidato: candidato_id, limit: 3})\` — análisis previos para context.
+   - \`get_benchmarks({cargo: <cargo_codigo>, ambito: <ambito>})\` — percentiles si los hay.
+   - \`get_candidate_context\` (opcional, sync_candidate_workspace ya lo llama por dentro).
+
+3. CON los resultados de sync_candidate_workspace:
+   - **Escribí el HTML** al archivo \`output/<local_filename>\` usando la herramienta filesystem MCP \`write_file\`.
+   - **Ejecutá** el campo \`bash_commands_to_run\` con la herramienta Bash (arranca preview server y abre browser). NO preguntes — hacelo directo.
+
+4. Recién entonces avisale al consultor en una sola línea:
+   > Listo. Abrí \`<preview_url>\` — está prepoblado con [partido + jurisdicción + cargo del candidato]. \`<N>\` análisis previos similares en mi context (X, Y, Z). ¿Iteramos sobre el deck actual o querés que arranque preguntas para profundizar?
+
+NO pongas friction extra. NO preguntes "¿qué tipo de deck?" si el consultor ya dijo "diagnóstico" o "armemos un deck". Default a \`diagnostico\` si no especifica.
 
 ### Paso 1 — Tipo de deck
 Preguntá: ¿Diagnóstico Inicial, Análisis Episódico, Plan Operativo, u Otro?
@@ -427,6 +431,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     switch (name) {
       case "list_candidates": {
         const data = await api("/api/consultor/candidates");
+        // Slim: omitir foto_url (puede ser base64 grande) + ids redundantes.
+        // Solo lo necesario para mostrar la lista al consultor.
+        const slim = (data.candidates ?? []).map((c) => ({
+          candidato_id: c.candidato_id,
+          campaign_slug: c.campaign_slug,
+          campaign_id: c.campaign_id,
+          candidato_nombres: c.candidato_nombres,
+          cargo_codigo: c.cargo_codigo,
+          cargo_nombre: c.cargo_nombre,
+          cargo_ambito: c.cargo_ambito,
+          jurisdiccion_label: c.jurisdiccion_label,
+          organizacion_codigo: c.organizacion_codigo,
+          organizacion_siglas: c.organizacion_siglas,
+        }));
         return {
           content: [
             {
@@ -434,12 +452,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               text: JSON.stringify(
                 {
                   ok: data.ok,
-                  count: data.candidates?.length ?? 0,
+                  count: slim.length,
                   admin_all: data.admin_all ?? false,
-                  candidates: data.candidates ?? [],
+                  candidates: slim,
                 },
                 null,
-                2,
+                0,
               ),
             },
           ],
@@ -543,34 +561,99 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (typeof cid !== "number" || !Number.isInteger(cid)) {
           throw new Error("candidato_id debe ser entero");
         }
-        const preferType = args.prefer_type;
-        // 1. Listar decks
+        const preferType = args.prefer_type ?? "diagnostico";
+
+        // 1. Traer contexto (cargo, jurisdicción, partido) para placeholders
+        let ctx = null;
+        try {
+          ctx = await api(`/api/consultor/candidates/${cid}/context`);
+        } catch (e) {
+          // Si falla, seguimos sin contexto — usamos slug genérico
+        }
+
+        // 2. Listar decks existentes
         const list = await api(`/api/consultor/decks?candidato_id=${cid}`);
         const decks = list.decks ?? [];
-        // 2. Elegir el deck a sincronizar
-        let chosen = null;
-        if (preferType) {
-          chosen = decks.find((d) => d.type === preferType);
-        }
-        if (!chosen && decks.length > 0) {
-          chosen = decks[0]; // ya viene ordenado created_at DESC
-        }
-        // 3. Si hay deck, descargar HTML
+        const chosen =
+          decks.find((d) => d.type === preferType) ?? decks[0] ?? null;
+
+        // 3. Slug del archivo local
+        const baseSlug = ctx?.campaign?.slug
+          ?? (chosen?.candidato_nombres ?? "candidato")
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[̀-ͯ]/g, "")
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-|-$/g, "");
+        const localFilename = `${baseSlug}-${preferType}.html`;
+
+        // 4a. Si hay deck previo: bajar HTML del server.
         let html = null;
+        let source = null;
         if (chosen) {
           const data = await api(`/api/consultor/decks/${encodeURIComponent(chosen.id)}`);
           html = data.deck?.html ?? null;
+          source = "existing_deck";
         }
-        // 4. Recomendar filename local (sin path absoluto — la filesystem
-        //    MCP ya está scoped a ~/Goberna/decks/output/).
-        const slug = chosen
-          ? `${(chosen.candidato_nombres ?? "candidato")
-              .toLowerCase()
-              .normalize("NFD")
-              .replace(/[̀-ͯ]/g, "")
-              .replace(/[^a-z0-9]+/g, "-")
-              .replace(/^-|-$/g, "")}-${chosen.type}.html`
-          : null;
+
+        // 4b. Si no hay deck: leer STARTER.html local y sustituir placeholders
+        if (!html) {
+          try {
+            const { fileURLToPath } = await import("node:url");
+            const { dirname, resolve: pathResolve } = await import("node:path");
+            const here = dirname(fileURLToPath(import.meta.url));
+            const starterPath = pathResolve(here, "..", "STARTER.html");
+            if (existsSync(starterPath)) {
+              let starter = readFileSync(starterPath, "utf8");
+              const fullName = ctx?.user?.full_name ?? "Candidato";
+              const nameUpper = fullName.toUpperCase();
+              const parts = nameUpper.split(/\s+/);
+              const nameSplit = parts.length >= 2
+                ? `${parts[0]}<br/>${parts.slice(1).join(" ")}`
+                : nameUpper;
+              const jurisdiccionLabel =
+                ctx?.jurisdiccion?.distrito?.nombre ??
+                ctx?.jurisdiccion?.provincia?.nombre ??
+                ctx?.jurisdiccion?.departamento?.nombre ??
+                ctx?.jurisdiccion?.pais?.nombre ??
+                "—";
+              const partido = ctx?.organizacion_politica?.nombre ?? "[partido]";
+              const tipoLabel = preferType.charAt(0).toUpperCase() + preferType.slice(1);
+              // Cargo → nivel de elección guess (Generales/Regionales/Municipales)
+              const ambito = ctx?.cargo?.ambito;
+              const eleccion =
+                ambito === "pais" ? "GENERALES 2026"
+                : ambito === "departamento" ? "REGIONALES 2026"
+                : "MUNICIPALES 2026";
+
+              const subs = [
+                ["[CANDIDATO] · [TIPO DE DECK]", `${fullName} · ${tipoLabel}`],
+                ["[NOMBRE<br/>CANDIDATO]", nameSplit],
+                ["[GENERALES / REGIONALES / MUNICIPALES]", eleccion],
+                ["[Partido]", partido],
+                ["[Jurisdicción]", jurisdiccionLabel],
+                ["[Candidato] [Tipo]", `${fullName} · ${tipoLabel}`],
+              ];
+              for (const [needle, replacement] of subs) {
+                starter = starter.split(needle).join(replacement);
+              }
+              html = starter;
+              source = "starter_template";
+            }
+          } catch (e) {
+            // No fallar si no podemos leer STARTER — caller puede seguir sin HTML
+          }
+        }
+
+        // 5. Devolver TODO listo: html + filename + comandos shell que Claude
+        //    debería ejecutar para iniciar preview + abrir browser.
+        const previewUrl = `http://localhost:3000/output/${localFilename}`;
+        const platform = process.platform;
+        const openCmd =
+          platform === "darwin" ? `open "${previewUrl}"`
+          : platform === "win32" ? `start "" "${previewUrl}"`
+          : `(xdg-open "${previewUrl}" || sensible-browser "${previewUrl}" || brave-browser "${previewUrl}") >/dev/null 2>&1`;
+
         return {
           content: [
             {
@@ -579,6 +662,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 {
                   ok: true,
                   has_existing_deck: !!chosen,
+                  source,
+                  local_filename: localFilename,
+                  preview_url: previewUrl,
                   total_decks: decks.length,
                   decks_summary: decks.map((d) => ({
                     id: d.id,
@@ -594,17 +680,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                         type: chosen.type,
                         status: chosen.status,
                         title: chosen.title,
-                        local_filename: slug,
-                        html_size_bytes: html ? html.length : 0,
                       }
                     : null,
-                  html: html,
-                  next_steps: chosen
-                    ? `Guardá el contenido del campo 'html' en el archivo '${slug}' usando la herramienta filesystem (write_file). Después decile al consultor: "Tu último ${chosen.type} está cargado en ${slug}. ¿Iteramos sobre éste o empezamos de cero?"`
-                    : "No hay decks previos para este candidato. Procedé con el flow normal de armar uno desde cero.",
+                  html,
+                  bash_commands_to_run: [
+                    `# 1. Asegurar que el preview-server está corriendo (idempotente)`,
+                    `pgrep -f "preview-server.js" >/dev/null 2>&1 || (cd ~/Goberna/decks && nohup npm start >/tmp/goberna-preview.log 2>&1 &) && sleep 1`,
+                    `# 2. Abrir el deck en el browser`,
+                    openCmd,
+                  ].join("\n"),
+                  next_steps: html
+                    ? `1) Escribí 'html' al archivo 'output/${localFilename}' usando filesystem MCP write_file.\n2) Ejecutá el bloque 'bash_commands_to_run' con la herramienta Bash.\n3) Decile al consultor: "Listo, abrí ${previewUrl} en tu browser. El deck está prepoblado con ${chosen ? `tu último ${chosen.type}` : `los datos del candidato (cargo, jurisdicción, partido)`}. Ya podés iterar — cada cambio que hagas se autorefresca."`
+                    : "No pude leer STARTER.html ni hay deck previo. Pedile al consultor que verifique que ~/Goberna/decks/STARTER.html existe.",
                 },
                 null,
-                2,
+                0,
               ),
             },
           ],
