@@ -109,6 +109,27 @@ Esperá confirmación antes de generar el archivo.
 
 Si el consultor pide cambios, modificá el archivo en `output/` (no generes uno nuevo). Mantenelo como single source of truth hasta que él diga "este es el final".
 
+### Paso 7 — Subir al portal admin (si MCP está disponible)
+
+Cuando el consultor diga "este es el final" / "ya está, súbelo":
+
+1. Si el MCP `goberna` está disponible, llamá `upload_deck` con:
+   - `candidato_id` (el que elegimos en Paso 0)
+   - `title` — ej. "Diagnóstico Inicial — Roberto Sánchez"
+   - `type` — uno de: `diagnostico` | `analisis` | `plan` | `episodico` | `otro`
+   - `description` — resumen breve para que admin entienda contexto
+   - `html` — el contenido COMPLETO del archivo en `output/<archivo>.html` (leelo y pasalo entero)
+
+2. Avisá al consultor:
+   > ✅ Deck subido como **draft**. Admin lo va a revisar y publicar.
+   > Una vez publicado, vas a verlo en el portal del candidato.
+
+3. **Si MCP no está disponible**: decile al consultor que abra https://electoral.goberna.club/admin/decks y suba el `output/<archivo>.html` manualmente (función todavía no implementada en UI — pedí ayuda al admin).
+
+Antes de llamar `upload_deck`:
+- Confirmá con el consultor el `title` y `type` exactos
+- Verificá que el archivo final esté guardado y compilando OK con `deck-preview`
+
 ## Idioma + tono
 
 - Español rioplatense informal-profesional ("vos", "tenés", "armemos")

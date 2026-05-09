@@ -9,9 +9,9 @@
  *   list_candidates          → lista candidatos asignados al consultor
  *   get_candidate_context    → contexto completo de un candidato
  *
- * Tools (Fase B — agregadas en commit posterior):
+ * Tools (Fase B — write):
  *   list_decks               → decks existentes de un candidato
- *   upload_deck              → sube un .html como draft
+ *   upload_deck              → sube un .html como draft (admin lo publica)
  */
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -90,6 +90,53 @@ const TOOLS = [
       required: ["candidato_id"],
     },
   },
+  {
+    name: "list_decks",
+    description:
+      "Lista los decks ya subidos para un candidato (cualquier status: draft/published/rejected). Útil para mostrarle al consultor su histórico antes de crear uno nuevo, o para evitar duplicados.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        candidato_id: {
+          type: "integer",
+          description: "ID del candidato",
+        },
+      },
+      required: ["candidato_id"],
+    },
+  },
+  {
+    name: "upload_deck",
+    description:
+      "Sube un deck HTML como draft. Después de generar la presentación localmente y mostrarsela al consultor (preview en localhost:3000), llamar este tool con el contenido HTML completo. Queda como status='draft' hasta que admin la revise/publique. Devuelve el id del deck y un preview_url interno.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        candidato_id: {
+          type: "integer",
+          description: "ID del candidato (de list_candidates)",
+        },
+        title: {
+          type: "string",
+          description: "Título de la presentación (2–200 chars). Ej: 'Diagnóstico Inicial — Roberto Sánchez'",
+        },
+        type: {
+          type: "string",
+          enum: ["diagnostico", "analisis", "plan", "episodico", "otro"],
+          description: "Tipo de deck",
+        },
+        description: {
+          type: "string",
+          description: "Resumen opcional (≤500 chars) para que admin entienda contexto",
+        },
+        html: {
+          type: "string",
+          description: "Contenido HTML completo del deck (self-contained: tailwind por CDN está OK). Máximo 5MB.",
+        },
+      },
+      required: ["candidato_id", "title", "type", "html"],
+    },
+  },
 ];
 
 // ── Server setup ────────────────────────────────────────────────────────
@@ -147,6 +194,83 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             {
               type: "text",
               text: JSON.stringify(data, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "list_decks": {
+        const id = args.candidato_id;
+        if (typeof id !== "number" || !Number.isInteger(id)) {
+          throw new Error("candidato_id debe ser un entero");
+        }
+        const data = await api(`/api/consultor/decks?candidato_id=${id}`);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  ok: data.ok,
+                  count: data.decks?.length ?? 0,
+                  decks: (data.decks ?? []).map((d) => ({
+                    id: d.id,
+                    title: d.title,
+                    type: d.type,
+                    status: d.status,
+                    created_at: d.created_at,
+                    rejection_reason: d.rejection_reason,
+                  })),
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      }
+
+      case "upload_deck": {
+        const { candidato_id, title, type, description, html } = args;
+        if (typeof candidato_id !== "number" || !Number.isInteger(candidato_id)) {
+          throw new Error("candidato_id debe ser entero");
+        }
+        if (typeof title !== "string" || title.trim().length < 2) {
+          throw new Error("title requerido (mín 2 chars)");
+        }
+        const VALID_TYPES = ["diagnostico", "analisis", "plan", "episodico", "otro"];
+        if (!VALID_TYPES.includes(type)) {
+          throw new Error(`type debe ser uno de: ${VALID_TYPES.join(", ")}`);
+        }
+        if (typeof html !== "string" || html.length < 50) {
+          throw new Error("html vacío o demasiado corto");
+        }
+        const data = await api("/api/consultor/decks", {
+          method: "POST",
+          body: JSON.stringify({
+            candidato_id,
+            title: title.trim(),
+            type,
+            description: description ? String(description).trim() : undefined,
+            html,
+          }),
+        });
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  ok: data.ok,
+                  deck_id: data.deck?.id,
+                  status: data.deck?.status,
+                  message:
+                    "Deck subido como draft. Admin lo revisará antes de publicarlo. " +
+                    `Preview URL (requiere auth): ${data.deck?.preview_url}`,
+                },
+                null,
+                2,
+              ),
             },
           ],
         };
