@@ -122,6 +122,93 @@ const TOOLS = [
     },
   },
   {
+    name: "bootstrap_deck",
+    description:
+      "Crea o regenera el deck Goberna estándar (template Fase 2 con 6 slides) desde el onboarding del candidato + form opcional del consultor. Idempotente: si ya hay un draft del mismo (candidato, consultor, type), lo actualiza; si no, crea uno nuevo. Reemplaza al uso de STARTER.html local — el HTML lo arma el server con los datos reales del candidato. El form es opcional y se merge profundo (cualquier subset de los 5 secciones). Devuelve deck_id + html para que escribas en disco con filesystem MCP. SIEMPRE usá esto en lugar de generar HTML a mano. Si el consultor no pasó form aún, mandá form vacío y se crea el deck con placeholders [A completar] que el consultor puede llenar después con `update_deck_form`.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        candidato_id: { type: "integer", description: "ID del candidato (requerido — FK enforced en backend)." },
+        type: {
+          type: "string",
+          enum: ["diagnostico", "analisis", "plan", "episodico", "otro"],
+          description: "Tipo de deck (default: diagnostico).",
+        },
+        form: {
+          type: "object",
+          description: "Form opcional del consultor con 5 secciones. Cualquier subset es válido — el backend hace merge.",
+          properties: {
+            intro: {
+              type: "object",
+              properties: {
+                biografia_corta: { type: "string" },
+                tagline: { type: "string" },
+              },
+            },
+            partido_eg: {
+              type: "object",
+              description: "Cómo le fue al partido en EG 2026 en la zona.",
+              properties: {
+                como_le_fue_resumen: { type: "string" },
+                costo_beneficio_acercamiento: { type: "string" },
+                porcentaje_partido_zona: { type: "number" },
+              },
+            },
+            historico_local: {
+              type: "array",
+              description: "Resultados del partido en últimas 3 elecciones locales (2022/2018/2014).",
+              items: {
+                type: "object",
+                properties: {
+                  anio: { type: "integer" },
+                  candidato_partido: { type: "string" },
+                  votos: { type: "integer" },
+                  porcentaje: { type: "number" },
+                  posicion: { type: "integer" },
+                  observaciones: { type: "string" },
+                },
+                required: ["anio"],
+              },
+            },
+            candidato_historial: {
+              type: "object",
+              description: "Lo que sale al googlear al candidato.",
+              properties: {
+                cargos_anteriores: { type: "array", items: { type: "string" } },
+                pagina_web: { type: "string" },
+                redes_sociales: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      plataforma: { type: "string" },
+                      url: { type: "string" },
+                    },
+                    required: ["plataforma", "url"],
+                  },
+                },
+                denuncias: { type: "array", items: { type: "string" } },
+                info_relevante: { type: "string" },
+                posicionamiento_google: { type: "string" },
+              },
+            },
+            quien_es: {
+              type: "object",
+              description: "El elevator pitch del candidato — quién es, por qué postula.",
+              properties: {
+                texto_libre: { type: "string" },
+                edad: { type: "integer" },
+                profesion: { type: "string" },
+                trayectoria: { type: "string" },
+              },
+            },
+          },
+        },
+      },
+      required: ["candidato_id"],
+    },
+  },
+  {
     name: "publish_deck",
     description:
       "Autopublica un deck que está en status 'draft'. Pasa a 'published' y queda visible en https://electoral.goberna.club/candidatos/<slug>/digital/decks. Solo funciona si tu cuenta tiene consultor_global_access (los consultores Goberna principales). Sin global access devuelve 403 — en ese caso el deck queda en draft hasta que admin lo publique manualmente. Llamalo apenas el consultor diga 'subilo y publicalo' / 'publicalo ya' / similar.",
@@ -547,6 +634,64 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 },
                 null,
                 2,
+              ),
+            },
+          ],
+        };
+      }
+
+      case "bootstrap_deck": {
+        const { candidato_id, type, form } = args;
+        if (typeof candidato_id !== "number" || !Number.isInteger(candidato_id)) {
+          throw new Error("candidato_id debe ser entero");
+        }
+        const body = { candidato_id };
+        if (type) body.type = type;
+        if (form && typeof form === "object") body.form = form;
+        const data = await api("/api/consultor/decks/bootstrap", {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+        const deck = data.deck ?? {};
+        // Slug local recomendado
+        const fullName = deck.title ? deck.title.split("—")[1]?.trim() ?? "candidato" : "candidato";
+        const slug = fullName
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[̀-ͯ]/g, "")
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "");
+        const localFilename = `${slug}-${deck.type ?? "diagnostico"}.html`;
+        const previewUrl = `http://localhost:3000/output/${localFilename}`;
+        const platform = process.platform;
+        const openCmd =
+          platform === "darwin" ? `open "${previewUrl}"`
+          : platform === "win32" ? `start "" "${previewUrl}"`
+          : `(xdg-open "${previewUrl}" || sensible-browser "${previewUrl}" || brave-browser "${previewUrl}") >/dev/null 2>&1`;
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  ok: data.ok,
+                  replaced: data.replaced ?? false,
+                  deck_id: deck.id,
+                  type: deck.type,
+                  title: deck.title,
+                  status: deck.status,
+                  consultor_form: deck.consultor_form ?? {},
+                  local_filename: localFilename,
+                  preview_url: previewUrl,
+                  html: deck.html,
+                  bash_commands_to_run: [
+                    `pgrep -f "preview-server.js" >/dev/null 2>&1 || (cd ~/Goberna/decks && nohup npm start >/tmp/goberna-preview.log 2>&1 &) && sleep 1`,
+                    openCmd,
+                  ].join("\n"),
+                  next_steps: `1) Escribí el HTML al archivo 'output/${localFilename}' usando filesystem MCP write_file.\n2) Corré el bloque bash_commands_to_run con la herramienta Bash.\n3) Avisá al consultor: "Deck Goberna desplegado en ${previewUrl}. Tiene los 6 slides estándar — los datos del onboarding ya están auto-poblados, los placeholders [A completar] son las secciones donde el form opcional puede sumar info (web, redes, denuncias, quién es). Decime qué querés llenar."`,
+                },
+                null,
+                0,
               ),
             },
           ],
