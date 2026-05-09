@@ -122,6 +122,21 @@ const TOOLS = [
     },
   },
   {
+    name: "publish_deck",
+    description:
+      "Autopublica un deck que está en status 'draft'. Pasa a 'published' y queda visible en https://electoral.goberna.club/candidatos/<slug>/digital/decks. Solo funciona si tu cuenta tiene consultor_global_access (los consultores Goberna principales). Sin global access devuelve 403 — en ese caso el deck queda en draft hasta que admin lo publique manualmente. Llamalo apenas el consultor diga 'subilo y publicalo' / 'publicalo ya' / similar.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        deck_id: {
+          type: "string",
+          description: "UUID del deck a publicar (lo devolvió upload_deck).",
+        },
+      },
+      required: ["deck_id"],
+    },
+  },
+  {
     name: "fetch_deck_html",
     description:
       "Descarga el HTML completo de un deck existente. Devuelve metadata (title, type, status) + el HTML como string. Usalo cuando el consultor elige un candidato que ya tiene un deck previo, para iterar sobre el existente en lugar de empezar de cero. Importante: usalo INMEDIATAMENTE después de list_decks si encontrás un deck del tipo que querés trabajar.",
@@ -370,8 +385,8 @@ Tailwind via CDN está OK. Generá HTML standalone (sin frameworks). Mostralo co
 ### Paso 5 — Iteración
 El consultor puede pedirte cambios ("cambiá el dato del slide 4", "agregá una sección de riesgos"). Editás el artifact en el mismo turno.
 
-### Paso 6 — Subir como draft
-Cuando el consultor diga "subilo / publicalo / listo":
+### Paso 6 — Subir y (opcionalmente) publicar
+Cuando el consultor diga "subilo" / "publicalo" / "listo":
 1. Antes, llamá \`list_decks\` con el candidato_id. Si hay un \`rejected\` previo del mismo type, mostrale el \`rejection_reason\` y preguntale si lo abordó.
 2. Llamá \`upload_deck\` con:
    - \`candidato_id\`, \`title\`, \`type\`, \`description?\`, \`html\` (todo el contenido del artifact), y SIEMPRE
@@ -384,7 +399,12 @@ Cuando el consultor diga "subilo / publicalo / listo":
      - \`recomendaciones[]\` con \`{accion, area: 'territorio|digital|datos|comunicacion|...', plazo: 'inmediato|corto|mediano|largo'?, recursos_estimados?, kpi_objetivo?, prioridad 1..5?}\`
      - \`kpis[]\` con \`{nombre, valor_actual?, valor_objetivo?, unidad?, fecha_objetivo?}\`
 3. El backend reemplaza automáticamente cualquier draft previo del mismo \`(candidato, consultor, type)\` — no acumula 5 borradores.
-4. Avisá: "✅ Deck subido como draft. Admin lo va a revisar y publicar. Una vez publicado, el candidato lo verá en su portal en Digital → Presentaciones."
+
+4. **CHAIN automático con publish_deck**: si el consultor dijo "publicalo" / "subilo y publicalo" / "subilo ya" / "listo, publicar" — APENAS termina upload_deck con éxito y tenés \`deck_id\`, llamá inmediatamente \`publish_deck({deck_id})\` en la misma respuesta. NO le preguntes si quiere publicar — ya te lo dijo.
+   - Si publish_deck devuelve 403 (sin global access), avisale: "Subido como draft, te falta permiso de autopublicar — admin lo publica desde /decks."
+   - Si publish_deck OK, decile en una sola línea: "✅ Publicado. Ya está en https://electoral.goberna.club/candidatos/<slug>/digital/decks" (reemplazando <slug> por el campaign_slug del candidato).
+
+5. Si el consultor dijo SOLO "subilo" (sin mencionar publicar), dejalo en draft y decile: "Deck subido como draft. Decime 'publicalo' cuando estés listo."
 
 ## Tono
 - Español rioplatense informal-profesional ("vos", "tenés", "armemos")
@@ -531,6 +551,52 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             },
           ],
         };
+      }
+
+      case "publish_deck": {
+        const id = args.deck_id;
+        if (typeof id !== "string" || id.length < 5) {
+          throw new Error("deck_id debe ser un UUID");
+        }
+        try {
+          const data = await api(`/api/consultor/decks/${encodeURIComponent(id)}/publish`, {
+            method: "POST",
+          });
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    ok: data.ok,
+                    deck_id: data.deck?.id,
+                    status: data.deck?.status,
+                    published_at: data.deck?.published_at,
+                    public_url: `https://electoral.goberna.club/candidatos/<slug>/digital/decks`,
+                    message:
+                      "✅ Deck publicado. Ya está visible en el portal del candidato.",
+                  },
+                  null,
+                  0,
+                ),
+              },
+            ],
+          };
+        } catch (e) {
+          // Mensaje específico si es 403 SELF_PUBLISH_NOT_ALLOWED
+          if (String(e.message).includes("SELF_PUBLISH_NOT_ALLOWED") || String(e.message).includes("403")) {
+            return {
+              isError: true,
+              content: [
+                {
+                  type: "text",
+                  text: "No tenés permiso para autopublicar (te falta consultor_global_access). El deck quedó en draft — pedile a admin que lo publique en https://electoral.goberna.club/decks.",
+                },
+              ],
+            };
+          }
+          throw e;
+        }
       }
 
       case "fetch_deck_html": {
