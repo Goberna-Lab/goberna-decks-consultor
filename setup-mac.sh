@@ -51,7 +51,7 @@ if [[ -d "$WORKDIR/.git" ]]; then
   cd "$WORKDIR" && git pull --ff-only
 else
   echo "▸ Clonando repo a $WORKDIR..."
-  git clone https://github.com/Goberna-Lab/goberna-decks-consultor.git "$WORKDIR"
+  git clone https://github.com/EstephanoO/goberna-decks-consultor.git "$WORKDIR"
 fi
 echo "✓ Repo en $WORKDIR"
 

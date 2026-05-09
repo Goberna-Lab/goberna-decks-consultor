@@ -55,7 +55,7 @@ if (Test-Path (Join-Path $workDir ".git")) {
     Pop-Location
 } else {
     Write-Host "▸ Clonando repo a $workDir..."
-    git clone https://github.com/Goberna-Lab/goberna-decks-consultor.git $workDir
+    git clone https://github.com/EstephanoO/goberna-decks-consultor.git $workDir
 }
 Write-Host "✓ Repo en $workDir"
 
