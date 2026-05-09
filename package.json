@@ -1,0 +1,10 @@
+{
+  "name": "goberna-decks-consultor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Kit del consultor político de Goberna para generar decks HTML modernos con Claude.",
+  "scripts": {
+    "start": "node scripts/preview-server.js",
+    "preview": "node scripts/preview-server.js"
+  }
+}

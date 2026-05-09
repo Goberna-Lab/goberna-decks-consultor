@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Roberto Sánchez · Conclusiones + Recomendaciones</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --navy: #0a1f4a;
+    --navy-deep: #061633;
+    --navy-mid: #1a2c5e;
+    --gold: #fbbf24;
+    --gold-deep: #f59e0b;
+    --red: #dc2626;
+    --red-soft: #fecaca;
+    --ink: #0f172a;
+  }
+  * { font-family: 'Montserrat', system-ui, sans-serif; }
+  html, body { background: #ffffff; color: var(--ink); overflow-x: hidden; }
+
+  /* Header band — navy gradient + thick gold underline (estilo deck Roberto Sánchez) */
+  .hdr {
+    background: linear-gradient(to right, var(--navy-deep) 0%, var(--navy) 50%, var(--navy-deep) 100%);
+    position: relative;
+  }
+  .hdr::after {
+    content: ''; position: absolute; left: 0; right: 0; bottom: -6px; height: 6px;
+    background: linear-gradient(to right, var(--gold-deep), var(--gold), var(--gold-deep));
+  }
+  /* Sutil cloud overlay solo en el header */
+  .hdr::before {
+    content: ''; position: absolute; inset: 0; opacity: .35; pointer-events: none;
+    background-image:
+      radial-gradient(ellipse 60% 80% at 20% 50%, rgba(96,165,250,.18), transparent 60%),
+      radial-gradient(ellipse 50% 70% at 80% 50%, rgba(251,191,36,.10), transparent 60%);
+  }
+
+  /* Footer thin gold bar fixed at bottom */
+  .gold-bar {
+    background: linear-gradient(to right, var(--gold-deep), var(--gold), var(--gold-deep));
+  }
+
+  /* Slide animation */
+  .slide { display: none; min-height: 100vh; flex-direction: column; }
+  .slide.active { display: flex; animation: slidein .45s cubic-bezier(.22,1,.36,1) both; }
+  @keyframes slidein { from { opacity: 0; transform: translateX(40px) } to { opacity: 1; transform: translateX(0) } }
+
+  /* Conclusión 1 — HERO destacado en navy sobre body blanco */
+  .hero-1 {
+    background: linear-gradient(135deg, var(--navy) 0%, var(--navy-mid) 100%);
+    border-left: 6px solid var(--gold);
+    box-shadow: 0 20px 50px -12px rgba(10,31,74,.25);
+    position: relative; overflow: hidden;
+  }
+  .hero-1::before {
+    content: ''; position: absolute; inset: 0; opacity: .3; pointer-events: none;
+    background-image:
+      radial-gradient(ellipse 60% 80% at 80% 30%, rgba(251,191,36,.15), transparent 60%);
+  }
+
+  /* Tarjetas de riesgo */
+  .risk-card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-left: 4px solid var(--red);
+    box-shadow: 0 4px 12px -4px rgba(0,0,0,.06);
+    transition: all .25s ease;
+  }
+  .risk-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 28px -8px rgba(220,38,38,.18);
+    border-left-width: 6px;
+  }
+  .risk-letter {
+    background: var(--red);
+    color: #fff;
+    font-weight: 900;
+  }
+
+  /* Tarjetas de recomendación */
+  .reco-card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 4px 14px -6px rgba(0,0,0,.08);
+    transition: all .3s ease;
+    position: relative;
+    overflow: hidden;
+  }
+  .reco-card::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+    background: linear-gradient(to bottom, var(--gold-deep), var(--gold));
+    transition: width .3s ease;
+  }
+  .reco-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 18px 40px -10px rgba(251,191,36,.25);
+  }
+  .reco-card:hover::before { width: 8px; }
+
+  .num-badge {
+    background: linear-gradient(135deg, var(--navy), var(--navy-mid));
+    color: var(--gold);
+    font-weight: 900;
+    box-shadow: 0 6px 18px -4px rgba(10,31,74,.4);
+  }
+
+  /* Reco final destacada — color invertido */
+  .reco-final {
+    background: linear-gradient(135deg, var(--navy) 0%, var(--navy-mid) 100%);
+    border: 1px solid var(--navy-mid);
+    box-shadow: 0 20px 50px -12px rgba(10,31,74,.35);
+    color: white;
+    position: relative; overflow: hidden;
+  }
+  .reco-final::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 8px;
+    background: linear-gradient(to bottom, var(--gold-deep), var(--gold));
+  }
+  .reco-final::after {
+    content: ''; position: absolute; inset: 0; opacity: .25; pointer-events: none;
+    background-image:
+      radial-gradient(ellipse 50% 80% at 90% 30%, rgba(251,191,36,.20), transparent 60%);
+  }
+  .reco-final .num-badge {
+    background: linear-gradient(135deg, var(--gold-deep), var(--gold));
+    color: var(--navy-deep);
+  }
+
+  /* Footer nav */
+  .footer-bar {
+    background: linear-gradient(to top, rgba(255,255,255,1) 0%, rgba(255,255,255,.95) 60%, transparent 100%);
+    backdrop-filter: blur(8px);
+    border-top: 1px solid #f3f4f6;
+  }
+  .nav-btn { transition: all .2s ease; }
+  .nav-btn:hover:not(:disabled) { transform: scale(1.05); }
+  .nav-btn:active:not(:disabled) { transform: scale(.95); }
+  .nav-btn:disabled { opacity: .3; cursor: not-allowed; }
+
+  /* Mobile */
+  @media (max-width: 768px) {
+    .hdr h1 { font-size: 1.85rem !important; }
+  }
+
+  /* Estado pill superior — tipo "26/27" con nombre del candidato */
+  .top-pill {
+    background: rgba(10,31,74,.06);
+    border: 1px solid rgba(10,31,74,.12);
+    color: var(--navy);
+  }
+</style>
+</head>
+<body>
+
+<!-- ═════════════════ SLIDE 26: CONCLUSIONES ═════════════════ -->
+<section id="slide-1" class="slide active">
+
+  <!-- Header band -->
+  <div class="hdr px-6 sm:px-12 py-6 sm:py-8">
+    <div class="max-w-7xl mx-auto relative z-10 text-center">
+      <p class="text-[10px] sm:text-xs uppercase tracking-[0.4em] text-amber-400/90 font-bold mb-2">
+        Roberto Sánchez · Diagnóstico segunda vuelta
+      </p>
+      <h1 class="text-3xl sm:text-5xl md:text-6xl font-black uppercase tracking-tight text-white leading-tight">
+        Conclusiones
+      </h1>
+    </div>
+  </div>
+
+  <!-- Body white -->
+  <div class="flex-1 px-6 sm:px-12 py-10 sm:py-14 max-w-7xl mx-auto w-full pb-28">
+
+    <!-- Conclusión 1: hero punchline -->
+    <div class="hero-1 rounded-2xl p-6 sm:p-10 mb-10 relative">
+      <div class="relative z-10 flex items-start gap-5 sm:gap-7">
+        <div class="num-badge shrink-0 size-14 sm:size-16 rounded-2xl flex items-center justify-center text-2xl sm:text-3xl">
+          01
+        </div>
+        <div class="flex-1">
+          <p class="text-[10px] sm:text-xs uppercase tracking-[0.35em] text-amber-400 font-bold mb-3">
+            La idea fuerza
+          </p>
+          <p class="text-xl sm:text-3xl md:text-4xl text-white font-bold leading-[1.15]">
+            Roberto Sánchez necesita una estrategia de
+            <span class="text-amber-400">tecnopolítica agresiva</span>.
+            La segunda vuelta se definirá en
+            <span class="text-amber-400">segmentos urbanos altamente digitalizados</span>.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Conclusión 2 — intro -->
+    <div class="flex items-start gap-5 sm:gap-7 mb-7">
+      <div class="num-badge shrink-0 size-14 sm:size-16 rounded-2xl flex items-center justify-center text-2xl sm:text-3xl">
+        02
+      </div>
+      <div class="flex-1">
+        <p class="text-[10px] sm:text-xs uppercase tracking-[0.35em] text-red-600 font-bold mb-2">
+          Riesgos críticos · Campaña de primera vuelta
+        </p>
+        <p class="text-xl sm:text-3xl md:text-4xl font-bold leading-[1.15]" style="color:var(--ink);">
+          La campaña digital tuvo
+          <span class="text-red-600">7 riesgos críticos</span>
+          que comprometen la continuidad.
+        </p>
+      </div>
+    </div>
+
+    <!-- Grid de 7 riesgos (a-g) -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+      <div class="risk-card rounded-xl p-4 flex gap-3">
+        <span class="risk-letter shrink-0 size-9 rounded-lg flex items-center justify-center text-sm">A</span>
+        <div>
+          <p class="text-[11px] uppercase tracking-[0.15em] font-bold text-red-700 mb-0.5">Sin verificación</p>
+          <p class="text-sm leading-snug" style="color:var(--ink);">Ausencia de check oficial en sus canales públicos.</p>
+        </div>
+      </div>
+
+      <div class="risk-card rounded-xl p-4 flex gap-3">
+        <span class="risk-letter shrink-0 size-9 rounded-lg flex items-center justify-center text-sm">B</span>
+        <div>
+          <p class="text-[11px] uppercase tracking-[0.15em] font-bold text-red-700 mb-0.5">Sin frente web</p>
+          <p class="text-sm leading-snug" style="color:var(--ink);">Cero posicionamiento en buscadores. No domina su propia búsqueda.</p>
+        </div>
+      </div>
+
+      <div class="risk-card rounded-xl p-4 flex gap-3">
+        <span class="risk-letter shrink-0 size-9 rounded-lg flex items-center justify-center text-sm">C</span>
+        <div>
+          <p class="text-[11px] uppercase tracking-[0.15em] font-bold text-red-700 mb-0.5">WhatsApp ausente</p>
+          <p class="text-sm leading-snug" style="color:var(--ink);">Sin canales personalizados de difusión y conversación uno-a-uno.</p>
+        </div>
+      </div>
+
+      <div class="risk-card rounded-xl p-4 flex gap-3">
+        <span class="risk-letter shrink-0 size-9 rounded-lg flex items-center justify-center text-sm">D</span>
+        <div>
+          <p class="text-[11px] uppercase tracking-[0.15em] font-bold text-red-700 mb-0.5">Cero estructura partidaria digital</p>
+          <p class="text-sm leading-snug" style="color:var(--ink);">No hay fuerza para impulsar tendencias orgánicas ni para defenderse de ataques.</p>
+        </div>
+      </div>
+
+      <div class="risk-card rounded-xl p-4 flex gap-3">
+        <span class="risk-letter shrink-0 size-9 rounded-lg flex items-center justify-center text-sm">E</span>
+        <div>
+          <p class="text-[11px] uppercase tracking-[0.15em] font-bold text-red-700 mb-0.5">Sin War Room</p>
+          <p class="text-sm leading-snug" style="color:var(--ink);">No existe un comando digital agresivo y centralizado.</p>
+        </div>
+      </div>
+
+      <div class="risk-card rounded-xl p-4 flex gap-3">
+        <span class="risk-letter shrink-0 size-9 rounded-lg flex items-center justify-center text-sm">F</span>
+        <div>
+          <p class="text-[11px] uppercase tracking-[0.15em] font-bold text-red-700 mb-0.5">Anuncios pagados sin estrategia</p>
+          <p class="text-sm leading-snug" style="color:var(--ink);">No hay equipo especializado en compra de medios digital.</p>
+        </div>
+      </div>
+
+      <div class="risk-card rounded-xl p-4 flex gap-3 md:col-span-2 lg:col-span-3">
+        <span class="risk-letter shrink-0 size-9 rounded-lg flex items-center justify-center text-sm">G</span>
+        <div>
+          <p class="text-[11px] uppercase tracking-[0.15em] font-bold text-red-700 mb-0.5">Sin agencia creativa ni producción cinematográfica</p>
+          <p class="text-sm leading-snug" style="color:var(--ink);">Falta de capacidad para producir contenidos emocionales que construyan narrativa.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════ SLIDE 27: RECOMENDACIONES ═════════════════ -->
+<section id="slide-2" class="slide">
+
+  <!-- Header band -->
+  <div class="hdr px-6 sm:px-12 py-6 sm:py-8">
+    <div class="max-w-7xl mx-auto relative z-10 text-center">
+      <p class="text-[10px] sm:text-xs uppercase tracking-[0.4em] text-amber-400/90 font-bold mb-2">
+        Roberto Sánchez · Plan de acción
+      </p>
+      <h1 class="text-3xl sm:text-5xl md:text-6xl font-black uppercase tracking-tight text-white leading-tight">
+        Recomendaciones
+      </h1>
+    </div>
+  </div>
+
+  <!-- Body white -->
+  <div class="flex-1 px-6 sm:px-12 py-10 sm:py-14 max-w-7xl mx-auto w-full pb-28">
+
+    <p class="text-base sm:text-xl mb-10 max-w-4xl leading-relaxed font-medium" style="color:var(--ink);">
+      <span class="text-amber-600 font-bold">7 acciones concretas</span>
+      para corregir los riesgos críticos y construir tecnopolítica agresiva
+      de cara a segunda vuelta.
+    </p>
+
+    <!-- Grid 6 + 1 destacada -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+      <!-- 01 War Room -->
+      <div class="reco-card rounded-2xl p-5 sm:p-6 pl-7 sm:pl-8">
+        <div class="flex items-center justify-between mb-4">
+          <div class="num-badge size-12 rounded-xl flex items-center justify-center text-xl">01</div>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0a1f4a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".7"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+        </div>
+        <h3 class="text-lg sm:text-xl font-bold leading-tight mb-1.5" style="color:var(--ink);">
+          War Room digital centralizado
+        </h3>
+        <p class="text-sm leading-relaxed" style="color:#475569;">
+          Comando con alta tecnología que coordine respuesta y narrativa en tiempo real las 24h.
+        </p>
+      </div>
+
+      <!-- 02 SEO + Web -->
+      <div class="reco-card rounded-2xl p-5 sm:p-6 pl-7 sm:pl-8">
+        <div class="flex items-center justify-between mb-4">
+          <div class="num-badge size-12 rounded-xl flex items-center justify-center text-xl">02</div>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0a1f4a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".7"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        </div>
+        <h3 class="text-lg sm:text-xl font-bold leading-tight mb-1.5" style="color:var(--ink);">
+          Estrategia agresiva en buscadores
+        </h3>
+        <p class="text-sm leading-relaxed" style="color:#475569;">
+          SEO + SEM + front web propio para dominar las búsquedas sobre el candidato.
+        </p>
+      </div>
+
+      <!-- 03 WhatsApp -->
+      <div class="reco-card rounded-2xl p-5 sm:p-6 pl-7 sm:pl-8">
+        <div class="flex items-center justify-between mb-4">
+          <div class="num-badge size-12 rounded-xl flex items-center justify-center text-xl">03</div>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0a1f4a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".7"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <h3 class="text-lg sm:text-xl font-bold leading-tight mb-1.5" style="color:var(--ink);">
+          Ofensiva en WhatsApp
+        </h3>
+        <p class="text-sm leading-relaxed" style="color:#475569;">
+          Canales personalizados, listas de difusión y conversación uno-a-uno con segmentos clave.
+        </p>
+      </div>
+
+      <!-- 04 Cinematográfico -->
+      <div class="reco-card rounded-2xl p-5 sm:p-6 pl-7 sm:pl-8">
+        <div class="flex items-center justify-between mb-4">
+          <div class="num-badge size-12 rounded-xl flex items-center justify-center text-xl">04</div>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0a1f4a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".7"><path d="M22 8a.76.76 0 0 0 0-.21v-.08a.77.77 0 0 0-.07-.16.35.35 0 0 0-.05-.08l-.1-.13-.08-.06-.12-.09-9-5a1 1 0 0 0-1 0l-9 5-.09.07-.11.08a.41.41 0 0 0-.07.11.39.39 0 0 0-.08.1.59.59 0 0 0-.06.14.3.3 0 0 0 0 .1A.76.76 0 0 0 2 8v8a1 1 0 0 0 .52.87l9 5a.75.75 0 0 0 .13.06h.1a1.06 1.06 0 0 0 .5 0h.1l.14-.06 9-5A1 1 0 0 0 22 16V8z"/><path d="m17 10.5-5-3-5 3"/></svg>
+        </div>
+        <h3 class="text-lg sm:text-xl font-bold leading-tight mb-1.5" style="color:var(--ink);">
+          Producción cinematográfica
+        </h3>
+        <p class="text-sm leading-relaxed" style="color:#475569;">
+          Efectos emotivos audiovisuales de alto impacto para vehiculizar el mensaje político.
+        </p>
+      </div>
+
+      <!-- 05 Redes -->
+      <div class="reco-card rounded-2xl p-5 sm:p-6 pl-7 sm:pl-8">
+        <div class="flex items-center justify-between mb-4">
+          <div class="num-badge size-12 rounded-xl flex items-center justify-center text-xl">05</div>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0a1f4a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".7"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></svg>
+        </div>
+        <h3 class="text-lg sm:text-xl font-bold leading-tight mb-1.5" style="color:var(--ink);">
+          Diferenciar redes sociales
+        </h3>
+        <p class="text-sm leading-relaxed" style="color:#475569;">
+          Voz, formato y audiencia propios por plataforma. No copiar contenido entre redes.
+        </p>
+      </div>
+
+      <!-- 06 Org partidaria -->
+      <div class="reco-card rounded-2xl p-5 sm:p-6 pl-7 sm:pl-8">
+        <div class="flex items-center justify-between mb-4">
+          <div class="num-badge size-12 rounded-xl flex items-center justify-center text-xl">06</div>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0a1f4a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".7"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <h3 class="text-lg sm:text-xl font-bold leading-tight mb-1.5" style="color:var(--ink);">
+          Estructura partidaria digital nacional
+        </h3>
+        <p class="text-sm leading-relaxed" style="color:#475569;">
+          Militancia online capaz de impulsar tendencias y defender al candidato a escala.
+        </p>
+      </div>
+
+      <!-- 07 — full width destacada (invertida navy con gold accent) -->
+      <div class="reco-final reco-card rounded-2xl p-6 sm:p-8 pl-8 sm:pl-10 md:col-span-2 lg:col-span-3 relative">
+        <div class="relative z-10 flex items-start gap-5 sm:gap-6">
+          <div class="num-badge shrink-0 size-14 sm:size-16 rounded-2xl flex items-center justify-center text-2xl sm:text-3xl">
+            07
+          </div>
+          <div class="flex-1">
+            <p class="text-[10px] sm:text-xs uppercase tracking-[0.3em] text-amber-400 font-bold mb-2">
+              La acción decisiva
+            </p>
+            <h3 class="text-xl sm:text-3xl text-white font-bold leading-tight mb-2">
+              Anuncios pagados <span class="text-amber-400">solo al público urbano y citadino</span>
+            </h3>
+            <p class="text-sm sm:text-base text-blue-100 leading-relaxed max-w-3xl">
+              La segunda vuelta se gana en lo digital. Concentrar todo el presupuesto de pauta en el segmento donde se decide la elección — no diluir en zonas ya consolidadas.
+            </p>
+          </div>
+          <div class="hidden sm:block">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity=".5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- Footer fixed: Goberna brand + dot indicator + nav buttons -->
+<div class="footer-bar fixed bottom-0 inset-x-0 z-30 px-4 sm:px-8 py-3 sm:py-4 flex items-center justify-between gap-3">
+  <div class="flex items-center gap-2 text-xs uppercase tracking-widest font-bold" style="color:var(--navy);">
+    <span class="size-7 rounded-full flex items-center justify-center font-black text-xs" style="background:var(--navy); color:var(--gold);">G</span>
+    <span class="hidden sm:inline">Goberna · Roberto Sánchez 2da Vuelta</span>
+  </div>
+
+  <div class="flex items-center gap-3">
+    <div class="hidden md:flex items-center gap-2">
+      <span class="dot h-1.5 w-10 rounded-full" id="dot-1" style="background:var(--gold);"></span>
+      <span class="dot h-1.5 w-3 rounded-full bg-gray-300" id="dot-2"></span>
+    </div>
+    <span class="text-xs tabular-nums" style="color:#64748b;">
+      <span class="font-bold" id="counter-current" style="color:var(--navy);">26</span> · 27
+    </span>
+  </div>
+
+  <div class="flex items-center gap-2">
+    <button id="prev" class="nav-btn size-10 rounded-full border flex items-center justify-center" style="border-color:#e5e7eb; color:var(--navy);" disabled>
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+    </button>
+    <button id="next" class="nav-btn size-10 rounded-full flex items-center justify-center text-white" style="background:var(--gold); color:var(--navy); box-shadow: 0 8px 24px rgba(251,191,36,.4);">
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+    </button>
+  </div>
+</div>
+
+<script>
+(function(){
+  const slides = [document.getElementById('slide-1'), document.getElementById('slide-2')];
+  const dots = [document.getElementById('dot-1'), document.getElementById('dot-2')];
+  const counter = document.getElementById('counter-current');
+  const prevBtn = document.getElementById('prev');
+  const nextBtn = document.getElementById('next');
+  let idx = 0;
+
+  function show(n) {
+    n = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach((s, i) => s.classList.toggle('active', i === n));
+    dots.forEach((d, i) => {
+      const isActive = i === n;
+      d.style.background = isActive ? 'var(--gold)' : (i < n ? 'rgba(251,191,36,.4)' : '#d1d5db');
+      d.style.width = isActive ? '2.5rem' : '0.75rem';
+    });
+    counter.textContent = (26 + n).toString();
+    prevBtn.disabled = n === 0;
+    nextBtn.disabled = n === slides.length - 1;
+    nextBtn.style.opacity = n === slides.length - 1 ? '0.4' : '1';
+    idx = n;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  prevBtn.addEventListener('click', () => show(idx - 1));
+  nextBtn.addEventListener('click', () => show(idx + 1));
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); show(idx + 1); }
+    if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); show(idx - 1); }
+  });
+  let sx = 0;
+  document.addEventListener('touchstart', e => sx = e.touches[0].clientX, { passive: true });
+  document.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - sx;
+    if (Math.abs(dx) > 60) show(idx + (dx < 0 ? 1 : -1));
+  }, { passive: true });
+  show(0);
+})();
+</script>
+</body>
+</html>

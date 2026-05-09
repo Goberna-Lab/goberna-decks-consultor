@@ -1,0 +1,367 @@
+<!doctype html>
+<!--
+  ═══════════════════════════════════════════════════════════════════════
+   GOBERNA · STARTER DECK
+  ───────────────────────────────────────────────────────────────────────
+   Plantilla con TODOS los patrones visuales. Copiá las secciones que
+   necesites, borrá las que no. Cada bloque está marcado con comentarios
+   para que sea fácil identificar qué hace.
+
+   PALETA: ver DESIGN-SYSTEM.md
+   REGLAS: ver CLAUDE.md
+  ═══════════════════════════════════════════════════════════════════════
+-->
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>[CANDIDATO] · [TIPO DE DECK]</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+<style>
+  /* ── Tokens del sistema (NO MODIFICAR) ─────────────────────────────── */
+  :root {
+    --navy: #0a1f4a;
+    --navy-deep: #061633;
+    --navy-mid: #1a2c5e;
+    --gold: #fbbf24;
+    --gold-deep: #f59e0b;
+    --red: #dc2626;
+    --red-soft: #fecaca;
+    --ink: #0f172a;
+  }
+  * { font-family: 'Montserrat', system-ui, sans-serif; }
+  html, body { background: #ffffff; color: var(--ink); overflow-x: hidden; }
+
+  /* ── Header band: navy gradient + cloud overlay + gold underline ───── */
+  .hdr {
+    background: linear-gradient(to right, var(--navy-deep) 0%, var(--navy) 50%, var(--navy-deep) 100%);
+    position: relative;
+  }
+  .hdr::after {
+    content: ''; position: absolute; left: 0; right: 0; bottom: -6px; height: 6px;
+    background: linear-gradient(to right, var(--gold-deep), var(--gold), var(--gold-deep));
+  }
+  .hdr::before {
+    content: ''; position: absolute; inset: 0; opacity: .35; pointer-events: none;
+    background-image:
+      radial-gradient(ellipse 60% 80% at 20% 50%, rgba(96,165,250,.18), transparent 60%),
+      radial-gradient(ellipse 50% 70% at 80% 50%, rgba(251,191,36,.10), transparent 60%);
+  }
+
+  /* ── Cielo nublado para slides full-bleed (cover, dividers) ───────── */
+  .sky {
+    position: relative;
+    background: linear-gradient(to bottom, var(--navy-mid) 0%, var(--navy) 50%, var(--navy-deep) 100%);
+    color: white;
+    overflow: hidden;
+  }
+  .sky::before {
+    content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .65;
+    background-image:
+      radial-gradient(ellipse 60% 40% at 15% 20%, rgba(59,130,246,.18), transparent 60%),
+      radial-gradient(ellipse 70% 50% at 85% 30%, rgba(30,64,175,.22), transparent 65%),
+      radial-gradient(ellipse 80% 50% at 50% 80%, rgba(15,23,42,.6), transparent 70%);
+  }
+  .sky-content { position: relative; z-index: 10; }
+
+  /* ── Cards ─────────────────────────────────────────────────────────── */
+  .hero-card {
+    background: linear-gradient(135deg, var(--navy) 0%, var(--navy-mid) 100%);
+    border-left: 6px solid var(--gold);
+    box-shadow: 0 20px 50px -12px rgba(10,31,74,.25);
+    position: relative; overflow: hidden;
+  }
+  .hero-card::before {
+    content: ''; position: absolute; inset: 0; opacity: .3; pointer-events: none;
+    background-image: radial-gradient(ellipse 60% 80% at 80% 30%, rgba(251,191,36,.15), transparent 60%);
+  }
+  .risk-card {
+    background: #fff; border: 1px solid #e5e7eb; border-left: 4px solid var(--red);
+    box-shadow: 0 4px 12px -4px rgba(0,0,0,.06);
+    transition: all .25s ease;
+  }
+  .risk-card:hover { transform: translateY(-3px); box-shadow: 0 12px 28px -8px rgba(220,38,38,.18); border-left-width: 6px; }
+  .risk-letter { background: var(--red); color: #fff; font-weight: 900; }
+  .reco-card {
+    background: #fff; border: 1px solid #e5e7eb;
+    box-shadow: 0 4px 14px -6px rgba(0,0,0,.08);
+    transition: all .3s ease;
+    position: relative; overflow: hidden;
+  }
+  .reco-card::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+    background: linear-gradient(to bottom, var(--gold-deep), var(--gold));
+    transition: width .3s ease;
+  }
+  .reco-card:hover { transform: translateY(-4px); box-shadow: 0 18px 40px -10px rgba(251,191,36,.25); }
+  .reco-card:hover::before { width: 8px; }
+  .num-badge {
+    background: linear-gradient(135deg, var(--navy), var(--navy-mid));
+    color: var(--gold); font-weight: 900;
+    box-shadow: 0 6px 18px -4px rgba(10,31,74,.4);
+  }
+  .reco-final {
+    background: linear-gradient(135deg, var(--navy) 0%, var(--navy-mid) 100%);
+    border: 1px solid var(--navy-mid);
+    box-shadow: 0 20px 50px -12px rgba(10,31,74,.35);
+    color: white; position: relative; overflow: hidden;
+  }
+  .reco-final::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 8px;
+    background: linear-gradient(to bottom, var(--gold-deep), var(--gold));
+  }
+  .reco-final .num-badge { background: linear-gradient(135deg, var(--gold-deep), var(--gold)); color: var(--navy-deep); }
+
+  /* ── Slide animation ─────────────────────────────────────────────── */
+  .slide { display: none; min-height: 100vh; flex-direction: column; }
+  .slide.active { display: flex; animation: slidein .45s cubic-bezier(.22,1,.36,1) both; }
+  @keyframes slidein { from { opacity: 0; transform: translateX(40px) } to { opacity: 1; transform: translateX(0) } }
+
+  /* ── Footer nav ──────────────────────────────────────────────────── */
+  .footer-bar {
+    background: linear-gradient(to top, rgba(255,255,255,1) 0%, rgba(255,255,255,.95) 60%, transparent 100%);
+    backdrop-filter: blur(8px); border-top: 1px solid #f3f4f6;
+  }
+  .nav-btn { transition: all .2s ease; }
+  .nav-btn:hover:not(:disabled) { transform: scale(1.05); }
+  .nav-btn:active:not(:disabled) { transform: scale(.95); }
+  .nav-btn:disabled { opacity: .3; cursor: not-allowed; }
+
+  @media (max-width: 768px) { .hdr h1 { font-size: 1.85rem !important; } }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SLIDE 1: COVER
+     Pantalla completa navy + foto candidato + tagline rotado.
+     ══════════════════════════════════════════════════════════════════ -->
+<section id="slide-1" class="slide active sky">
+  <div class="sky-content flex-1 flex items-center justify-center px-6 py-12">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center max-w-7xl">
+
+      <!-- Lado izq: nombre + foto -->
+      <div>
+        <h1 class="text-5xl sm:text-7xl md:text-8xl font-black uppercase tracking-tight leading-[0.95]">
+          [NOMBRE<br/>CANDIDATO]
+        </h1>
+        <!-- Foto opcional - reemplazar src con base64 o URL -->
+        <!-- <img src="..." alt="" class="mt-8 w-72 rounded-2xl"> -->
+      </div>
+
+      <!-- Lado der: tagline -->
+      <div class="text-center md:text-left">
+        <p class="text-3xl sm:text-5xl text-white font-light tracking-wider mb-2">RUMBO</p>
+        <div class="my-1 inline-block bg-amber-400 text-[#0a1f4a] font-black px-3 py-0.5 text-sm md:text-base tracking-[0.3em]">
+          A LAS
+        </div>
+        <p class="text-4xl sm:text-6xl text-white font-black uppercase leading-[0.95]">
+          ELECCIONES
+        </p>
+        <div class="mt-3 inline-block bg-white text-[#0a1f4a] font-black px-5 py-1.5 text-2xl sm:text-3xl tracking-tight" style="transform: rotate(-2deg);">
+          [GENERALES / REGIONALES / MUNICIPALES]
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SLIDE 2: SECTION DIVIDER
+     Pantalla completa navy con pregunta gigante.
+     ══════════════════════════════════════════════════════════════════ -->
+<section id="slide-2" class="slide sky">
+  <div class="sky-content flex-1 flex flex-col items-center justify-center text-center px-6 py-16 max-w-6xl mx-auto">
+    <div class="inline-flex items-center gap-3 mb-8">
+      <span class="text-amber-400 font-black text-3xl tabular-nums">01</span>
+      <span class="h-px w-16 bg-amber-400/60"></span>
+      <span class="text-amber-400/90 text-sm uppercase tracking-[0.3em] font-bold">[ETIQUETA SECCIÓN]</span>
+    </div>
+    <h1 class="text-4xl sm:text-6xl md:text-8xl font-black uppercase leading-[0.95] tracking-tight">
+      ¿Cómo le fue a <span class="text-amber-400">[Partido]</span> en [Jurisdicción]?
+    </h1>
+    <div class="mt-12 h-1 w-32 sm:w-48 bg-amber-400"></div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SLIDE 3: CONTENIDO ESTÁNDAR
+     Header navy + body blanco con cards.
+     ══════════════════════════════════════════════════════════════════ -->
+<section id="slide-3" class="slide">
+  <!-- Header -->
+  <div class="hdr px-6 sm:px-12 py-6 sm:py-8">
+    <div class="max-w-7xl mx-auto relative z-10 text-center">
+      <p class="text-[10px] sm:text-xs uppercase tracking-[0.4em] text-amber-400/90 font-bold mb-2">[Kicker arriba del título]</p>
+      <h1 class="text-3xl sm:text-5xl md:text-6xl font-black uppercase tracking-tight text-white leading-tight">
+        [Título Principal]
+      </h1>
+    </div>
+  </div>
+
+  <!-- Body white -->
+  <div class="flex-1 px-6 sm:px-12 py-10 sm:py-14 max-w-7xl mx-auto w-full pb-28">
+
+    <!-- Hero card (idea fuerza) -->
+    <div class="hero-card rounded-2xl p-6 sm:p-10 mb-10 relative">
+      <div class="relative z-10 flex items-start gap-5 sm:gap-7">
+        <div class="num-badge shrink-0 size-14 sm:size-16 rounded-2xl flex items-center justify-center text-2xl sm:text-3xl">01</div>
+        <div class="flex-1">
+          <p class="text-[10px] sm:text-xs uppercase tracking-[0.35em] text-amber-400 font-bold mb-3">[Microtítulo]</p>
+          <p class="text-xl sm:text-3xl text-white font-bold leading-[1.15]">
+            Texto fuerte con
+            <span class="text-amber-400">highlight gold</span>
+            para enfatizar la idea clave.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Grid de cards (riesgos o recomendaciones) -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+      <!-- RISK CARD (rojo, para problemas) -->
+      <div class="risk-card rounded-xl p-4 flex gap-3">
+        <span class="risk-letter shrink-0 size-9 rounded-lg flex items-center justify-center text-sm">A</span>
+        <div>
+          <p class="text-[11px] uppercase tracking-[0.15em] font-bold text-red-700 mb-0.5">[Subtítulo riesgo]</p>
+          <p class="text-sm leading-snug text-slate-900">[Descripción corta del riesgo.]</p>
+        </div>
+      </div>
+
+      <!-- RECO CARD (gold, para soluciones) -->
+      <div class="reco-card rounded-2xl p-5 sm:p-6 pl-7 sm:pl-8">
+        <div class="flex items-center justify-between mb-4">
+          <div class="num-badge size-12 rounded-xl flex items-center justify-center text-xl">01</div>
+          <!-- Icon Lucide opcional -->
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0a1f4a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".7"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        </div>
+        <h3 class="text-lg sm:text-xl font-bold leading-tight mb-1.5 text-slate-900">[Título de la recomendación]</h3>
+        <p class="text-sm leading-relaxed text-slate-600">[Descripción breve.]</p>
+      </div>
+
+    </div>
+
+    <!-- BIG NUMBER (KPI) -->
+    <div class="mt-10 grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
+      <div>
+        <p class="text-6xl sm:text-7xl font-black tabular-nums text-amber-500 leading-none">132K</p>
+        <p class="mt-2 text-xs uppercase tracking-[0.3em] font-bold text-slate-500">Electores</p>
+      </div>
+      <div>
+        <p class="text-6xl sm:text-7xl font-black tabular-nums text-amber-500 leading-none">7°</p>
+        <p class="mt-2 text-xs uppercase tracking-[0.3em] font-bold text-slate-500">Posición partido</p>
+      </div>
+      <div>
+        <p class="text-6xl sm:text-7xl font-black tabular-nums text-amber-500 leading-none">8.7%</p>
+        <p class="mt-2 text-xs uppercase tracking-[0.3em] font-bold text-slate-500">Voto válido</p>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SLIDE FINAL: CTA / RECO DESTACADA
+     ══════════════════════════════════════════════════════════════════ -->
+<section id="slide-4" class="slide">
+  <div class="hdr px-6 sm:px-12 py-6 sm:py-8">
+    <div class="max-w-7xl mx-auto relative z-10 text-center">
+      <h1 class="text-3xl sm:text-5xl md:text-6xl font-black uppercase tracking-tight text-white">Plan Ganador</h1>
+    </div>
+  </div>
+
+  <div class="flex-1 px-6 sm:px-12 py-10 sm:py-14 max-w-7xl mx-auto w-full pb-28 flex flex-col justify-center">
+    <div class="reco-final reco-card rounded-2xl p-6 sm:p-10 relative">
+      <div class="relative z-10 flex items-start gap-5 sm:gap-6">
+        <div class="num-badge shrink-0 size-14 sm:size-16 rounded-2xl flex items-center justify-center text-2xl sm:text-3xl">07</div>
+        <div class="flex-1">
+          <p class="text-[10px] sm:text-xs uppercase tracking-[0.3em] text-amber-400 font-bold mb-2">La acción decisiva</p>
+          <h3 class="text-xl sm:text-3xl text-white font-bold leading-tight mb-2">
+            [Recomendación clave] <span class="text-amber-400">[con highlight]</span>
+          </h3>
+          <p class="text-sm sm:text-base text-blue-100 leading-relaxed max-w-3xl">
+            [Descripción del por qué es la acción decisiva y cómo se ejecuta.]
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     FOOTER NAV (NO MODIFICAR — es el patrón estándar Goberna)
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="footer-bar fixed bottom-0 inset-x-0 z-30 px-4 sm:px-8 py-3 sm:py-4 flex items-center justify-between gap-3">
+  <div class="flex items-center gap-2 text-xs uppercase tracking-widest font-bold" style="color:var(--navy);">
+    <span class="size-7 rounded-full flex items-center justify-center font-black text-xs" style="background:var(--navy); color:var(--gold);">G</span>
+    <span class="hidden sm:inline">Goberna · [Candidato] [Tipo]</span>
+  </div>
+  <div class="flex items-center gap-3">
+    <div class="hidden md:flex items-center gap-2" id="dots"></div>
+    <span class="text-xs tabular-nums text-slate-500">
+      <span class="font-bold" id="counter-current" style="color:var(--navy);">1</span> / <span id="counter-total"></span>
+    </span>
+  </div>
+  <div class="flex items-center gap-2">
+    <button id="prev" class="nav-btn size-10 rounded-full border border-gray-200 flex items-center justify-center" style="color:var(--navy);" disabled>
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+    </button>
+    <button id="next" class="nav-btn size-10 rounded-full flex items-center justify-center" style="background:var(--gold); color:var(--navy); box-shadow: 0 8px 24px rgba(251,191,36,.4);">
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+    </button>
+  </div>
+</div>
+
+<script>
+(function(){
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const total = slides.length;
+  const dotsContainer = document.getElementById('dots');
+  const counter = document.getElementById('counter-current');
+  document.getElementById('counter-total').textContent = total;
+  // Build dots dynamically
+  slides.forEach((_, i) => {
+    const d = document.createElement('span');
+    d.className = 'h-1.5 rounded-full transition-all';
+    dotsContainer.appendChild(d);
+  });
+  const dots = Array.from(dotsContainer.children);
+  const prevBtn = document.getElementById('prev');
+  const nextBtn = document.getElementById('next');
+  let idx = 0;
+
+  function show(n) {
+    n = Math.max(0, Math.min(total - 1, n));
+    slides.forEach((s, i) => s.classList.toggle('active', i === n));
+    dots.forEach((d, i) => {
+      const isActive = i === n;
+      d.style.background = isActive ? '#fbbf24' : (i < n ? 'rgba(251,191,36,.4)' : '#d1d5db');
+      d.style.width = isActive ? '2.5rem' : '0.75rem';
+    });
+    counter.textContent = n + 1;
+    prevBtn.disabled = n === 0;
+    nextBtn.disabled = n === total - 1;
+    nextBtn.style.opacity = n === total - 1 ? '0.4' : '1';
+    idx = n;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  prevBtn.addEventListener('click', () => show(idx - 1));
+  nextBtn.addEventListener('click', () => show(idx + 1));
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); show(idx + 1); }
+    if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); show(idx - 1); }
+  });
+  let sx = 0;
+  document.addEventListener('touchstart', e => sx = e.touches[0].clientX, { passive: true });
+  document.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - sx;
+    if (Math.abs(dx) > 60) show(idx + (dx < 0 ? 1 : -1));
+  }, { passive: true });
+  show(0);
+})();
+</script>
+</body>
+</html>

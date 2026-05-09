@@ -1,0 +1,9 @@
+node_modules/
+.DS_Store
+.vscode/
+.idea/
+
+# Output: los decks que genera el consultor son locales
+# (no los queremos en git)
+output/*
+!output/.gitkeep
