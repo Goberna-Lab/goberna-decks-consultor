@@ -122,6 +122,41 @@ const TOOLS = [
     },
   },
   {
+    name: "fetch_deck_html",
+    description:
+      "Descarga el HTML completo de un deck existente. Devuelve metadata (title, type, status) + el HTML como string. Usalo cuando el consultor elige un candidato que ya tiene un deck previo, para iterar sobre el existente en lugar de empezar de cero. Importante: usalo INMEDIATAMENTE después de list_decks si encontrás un deck del tipo que querés trabajar.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        deck_id: {
+          type: "string",
+          description: "UUID del deck (de list_decks).",
+        },
+      },
+      required: ["deck_id"],
+    },
+  },
+  {
+    name: "sync_candidate_workspace",
+    description:
+      "Atajo que combina list_decks + fetch_deck_html + recomendación de filename local. Llamalo apenas el consultor elige el candidato — devuelve un payload listo para que sepas: (a) si hay decks previos, (b) cuál es el más reciente para iterar, (c) qué filename usar al guardar localmente con la herramienta filesystem (`<candidato>-<type>.html` en /Users/.../Goberna/decks/output/). Después usás el filesystem MCP para escribir el archivo y mostrás el HTML al consultor diciendo \"acá está tu último deck, ¿iteramos sobre éste o empezamos de cero?\".",
+    inputSchema: {
+      type: "object",
+      properties: {
+        candidato_id: {
+          type: "integer",
+          description: "ID del candidato",
+        },
+        prefer_type: {
+          type: "string",
+          enum: ["diagnostico", "analisis", "plan", "episodico", "otro"],
+          description: "Tipo preferido (default: el más reciente sin importar el tipo)",
+        },
+      },
+      required: ["candidato_id"],
+    },
+  },
+  {
     name: "list_decks",
     description:
       "Lista los decks ya subidos para un candidato (cualquier status: draft/published/rejected). Útil para mostrarle al consultor su histórico antes de crear uno nuevo, o para evitar duplicados.",
@@ -294,8 +329,13 @@ const ARRANCAR_DECK_INSTRUCTIONS = `Sos el asistente de un consultor político d
    ¿Cuál querés trabajar?
    \`\`\`
 2. Cuando elija uno, llamá \`get_candidate_context\` con su \`candidato_id\`.
-3. Llamá \`find_similar_analisis\` con \`cargo_codigo\` + \`cargo_ambito\` del candidato. Si hay análisis previos, mostrale 1-3 bullets ("Hay 3 análisis previos de candidatos a alcalde de provincia con tu mismo partido").
-4. Llamá \`get_benchmarks\` con cargo + ámbito. Si trae data, anotala mentalmente — la vas a citar en el deck. Si está vacío, omitilo (la DB recién está creciendo).
+3. **Sincronizá el workspace local**: llamá \`sync_candidate_workspace({candidato_id})\`. Te devuelve:
+   - \`has_existing_deck\`: true/false
+   - Si \`has_existing_deck\` es true: el HTML del deck más reciente + el filename recomendado (\`<candidato>-<type>.html\`).
+   - Usá la herramienta filesystem MCP \`goberna-files:write_file\` para guardar ese HTML en \`<filename>\`. Después decile al consultor: "Tu último \`<type>\` está cargado localmente como \`<filename>\`. ¿Iteramos sobre éste o empezamos uno nuevo desde cero?"
+   - Si \`has_existing_deck\` es false: avisale "no hay decks previos, vamos a empezar de cero" y procedé.
+4. Llamá \`find_similar_analisis\` con \`cargo_codigo\` + \`cargo_ambito\` del candidato (excluí el actual con \`exclude_candidato\`). Si hay análisis previos, mostrale 1-3 bullets ("Hay 3 análisis previos de candidatos a alcalde de provincia con tu mismo partido").
+5. Llamá \`get_benchmarks\` con cargo + ámbito. Si trae data, anotala mentalmente — la vas a citar en el deck. Si está vacío, omitilo (la DB recién está creciendo).
 
 ### Paso 1 — Tipo de deck
 Preguntá: ¿Diagnóstico Inicial, Análisis Episódico, Plan Operativo, u Otro?
@@ -466,6 +506,102 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     (data.items?.length ?? 0) === 0
                       ? "Aún no hay benchmarks históricos para este corte. La DB se irá llenando con cada deck que el consultor suba con structured payload."
                       : null,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      }
+
+      case "fetch_deck_html": {
+        const id = args.deck_id;
+        if (typeof id !== "string" || id.length < 5) {
+          throw new Error("deck_id debe ser un UUID");
+        }
+        const data = await api(`/api/consultor/decks/${encodeURIComponent(id)}`);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  ok: data.ok,
+                  deck: data.deck ?? null,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      }
+
+      case "sync_candidate_workspace": {
+        const cid = args.candidato_id;
+        if (typeof cid !== "number" || !Number.isInteger(cid)) {
+          throw new Error("candidato_id debe ser entero");
+        }
+        const preferType = args.prefer_type;
+        // 1. Listar decks
+        const list = await api(`/api/consultor/decks?candidato_id=${cid}`);
+        const decks = list.decks ?? [];
+        // 2. Elegir el deck a sincronizar
+        let chosen = null;
+        if (preferType) {
+          chosen = decks.find((d) => d.type === preferType);
+        }
+        if (!chosen && decks.length > 0) {
+          chosen = decks[0]; // ya viene ordenado created_at DESC
+        }
+        // 3. Si hay deck, descargar HTML
+        let html = null;
+        if (chosen) {
+          const data = await api(`/api/consultor/decks/${encodeURIComponent(chosen.id)}`);
+          html = data.deck?.html ?? null;
+        }
+        // 4. Recomendar filename local (sin path absoluto — la filesystem
+        //    MCP ya está scoped a ~/Goberna/decks/output/).
+        const slug = chosen
+          ? `${(chosen.candidato_nombres ?? "candidato")
+              .toLowerCase()
+              .normalize("NFD")
+              .replace(/[̀-ͯ]/g, "")
+              .replace(/[^a-z0-9]+/g, "-")
+              .replace(/^-|-$/g, "")}-${chosen.type}.html`
+          : null;
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  ok: true,
+                  has_existing_deck: !!chosen,
+                  total_decks: decks.length,
+                  decks_summary: decks.map((d) => ({
+                    id: d.id,
+                    type: d.type,
+                    status: d.status,
+                    title: d.title,
+                    created_at: d.created_at,
+                    rejection_reason: d.rejection_reason,
+                  })),
+                  chosen_for_workspace: chosen
+                    ? {
+                        deck_id: chosen.id,
+                        type: chosen.type,
+                        status: chosen.status,
+                        title: chosen.title,
+                        local_filename: slug,
+                        html_size_bytes: html ? html.length : 0,
+                      }
+                    : null,
+                  html: html,
+                  next_steps: chosen
+                    ? `Guardá el contenido del campo 'html' en el archivo '${slug}' usando la herramienta filesystem (write_file). Después decile al consultor: "Tu último ${chosen.type} está cargado en ${slug}. ¿Iteramos sobre éste o empezamos de cero?"`
+                    : "No hay decks previos para este candidato. Procedé con el flow normal de armar uno desde cero.",
                 },
                 null,
                 2,

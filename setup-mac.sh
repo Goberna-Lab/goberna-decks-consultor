@@ -110,11 +110,16 @@ CLAUDE_CFG="$CLAUDE_CFG_DIR/claude_desktop_config.json"
 mkdir -p "$CLAUDE_CFG_DIR"
 
 # Patch idempotente: agregamos/reemplazamos solo la entry `goberna`
+# Pre-crear folder de output para filesystem MCP
+OUTPUT_DIR="$WORKDIR/output"
+mkdir -p "$OUTPUT_DIR"
+
 node --experimental-vm-modules - <<NODE
 const fs = require('node:fs');
 const path = ${JSON.stringify("$CLAUDE_CFG")};
 const mcpPath = ${JSON.stringify("$WORKDIR/mcp-server/index.mjs")};
 const tokenPath = ${JSON.stringify("$TOKEN_FILE")};
+const outputDir = ${JSON.stringify("$OUTPUT_DIR")};
 
 let cfg = {};
 try {
@@ -130,9 +135,16 @@ cfg.mcpServers.goberna = {
     GOBERNA_TOKEN_PATH: tokenPath,
   },
 };
+// Filesystem MCP: acceso de lectura/escritura SOLO al folder
+// Goberna/decks/output. Ahí guardamos cada deck que el consultor
+// trabaja para iterar entre sesiones.
+cfg.mcpServers['goberna-files'] = {
+  command: 'npx',
+  args: ['-y', '@modelcontextprotocol/server-filesystem', outputDir],
+};
 
 fs.writeFileSync(path, JSON.stringify(cfg, null, 2));
-console.log('✓ MCP goberna registrado en', path);
+console.log('✓ MCPs goberna + goberna-files registrados en', path);
 NODE
 
 # 9. Final

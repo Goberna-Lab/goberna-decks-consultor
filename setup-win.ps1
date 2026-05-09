@@ -120,6 +120,11 @@ if (-not $cfg.PSObject.Properties['mcpServers']) {
   $cfg | Add-Member -MemberType NoteProperty -Name 'mcpServers' -Value ([PSCustomObject]@{})
 }
 
+# Pre-creamos el folder local donde el filesystem MCP va a guardar los decks
+$outputDir = "$workDir\output"
+New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
+$outputDirJson = $outputDir.Replace('\', '/')
+
 $entry = [PSCustomObject]@{
   command = "node"
   args    = @($mcpPathJson)
@@ -129,10 +134,23 @@ $entry = [PSCustomObject]@{
   }
 }
 
+# Filesystem MCP: da a Claude Desktop acceso de lectura/escritura SOLO al
+# folder Goberna/decks/output. Ahí guardamos cada deck que el consultor
+# trabaja para poder iterar entre sesiones.
+$fsEntry = [PSCustomObject]@{
+  command = "npx"
+  args    = @("-y", "@modelcontextprotocol/server-filesystem", $outputDirJson)
+}
+
 if ($cfg.mcpServers.PSObject.Properties['goberna']) {
   $cfg.mcpServers.goberna = $entry
 } else {
   $cfg.mcpServers | Add-Member -MemberType NoteProperty -Name 'goberna' -Value $entry
+}
+if ($cfg.mcpServers.PSObject.Properties['goberna-files']) {
+  $cfg.mcpServers.'goberna-files' = $fsEntry
+} else {
+  $cfg.mcpServers | Add-Member -MemberType NoteProperty -Name 'goberna-files' -Value $fsEntry
 }
 
 $cfg | ConvertTo-Json -Depth 10 | Set-Content $claudeCfg
