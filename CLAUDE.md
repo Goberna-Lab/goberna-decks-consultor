@@ -54,9 +54,11 @@ Verificá si tenés acceso a las tools `list_candidates` y `get_candidate_contex
    ¿Cuál querés trabajar?
    ```
 3. Cuando elija uno, llamá `get_candidate_context` con el `candidato_id`
-4. Mostrá el contexto cargado en 3-5 bullets y pregunta qué tipo de deck quiere
-5. Saltate las preguntas 1-5 del prompt template (esos datos ya los tenés)
-6. Solo preguntás los datos que el contexto NO trae (datos electorales, ideas fuerza, recomendaciones)
+4. **Antes de empezar las preguntas**, llamá `find_similar_analisis` con el `cargo_codigo` + `cargo_ambito` del candidato. Si devuelve análisis previos, mostrale al consultor un bullet por cada uno (ej. "Hay 3 análisis previos de candidatos a alcalde de provincia con tu mismo partido — ¿querés que arranque viendo qué hallazgos tuvieron en común?"). Esto le ahorra preguntas al consultor.
+5. **Opcional**: llamá `get_benchmarks` con el cargo + ámbito. Si trae data, citala en el deck ("el p50 de cobertura territorial para alcaldes de provincia es X%"). Si está vacío, omitilo silenciosamente — la DB todavía está creciendo.
+6. Mostrá el contexto cargado en 3-5 bullets y pregunta qué tipo de deck quiere
+7. Saltate las preguntas 1-5 del prompt template (esos datos ya los tenés)
+8. Solo preguntás los datos que el contexto NO trae (datos electorales, ideas fuerza, recomendaciones)
 
 **Si NO están disponibles** (sin MCP, sin token, o offline):
 1. Avisá: "MCP no disponible — voy a pedirte los datos manualmente"
@@ -121,6 +123,16 @@ Cuando el consultor diga "este es el final" / "ya está, súbelo":
    - `type` — uno de: `diagnostico` | `analisis` | `plan` | `episodico` | `otro`
    - `description` — resumen breve para que admin entienda contexto
    - `html` — el contenido COMPLETO del archivo en `output/<archivo>.html` (leelo y pasalo entero)
+   - **`structured`** — OBLIGATORIO siempre que sea posible. Es la versión estructurada de lo que pusiste en el deck. Goberna lo guarda en una DB de análisis que crece con cada deck (alimenta benchmarks y futuros decks). Tiene 7 campos opcionales:
+     - `summary` — abstract en 1-2 frases
+     - `fecha_corte` — YYYY-MM-DD a la que refiere el análisis
+     - `hallazgos[]` — `{categoria: 'fortaleza|debilidad|oportunidad|amenaza|contexto', texto, evidencia?, peso 0..1?, tags[]?}` (apunta a 8-15 hallazgos)
+     - `riesgos[]` — `{riesgo, severidad: 'baja|media|alta|critica', probabilidad?, mitigacion?, responsable?}`
+     - `oportunidades[]` — `{oportunidad, ventana_temporal?, recursos_necesarios?, impacto_esperado?}`
+     - `competidores[]` — `{partido_codigo?, partido_nombre?, candidato_rival?, fortaleza_relativa 1..10?, jurisdiccion_clave?, notas?}`
+     - `recomendaciones[]` — `{accion, area: 'territorio|digital|datos|comunicacion|...', plazo: 'inmediato|corto|mediano|largo'?, recursos_estimados?, kpi_objetivo?, prioridad 1..5?}`
+     - `kpis[]` — `{nombre, valor_actual?, valor_objetivo?, unidad?, fecha_objetivo?}`
+   - El consultor NO te dicta esto — vos lo construís a partir del mismo material que le pediste para el deck. Ya lo tenés en tu contexto. Si no estás 100% seguro de un campo, omítelo (mejor que inventar).
 
 3. El backend reemplaza automáticamente cualquier **draft** previo del mismo `(candidato, consultor, type)`. La respuesta trae `replaced: true|false` — si fue `true`, decile al consultor que el draft anterior se sobreescribió (no acumula 5 borradores en admin).
 

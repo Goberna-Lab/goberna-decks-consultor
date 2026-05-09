@@ -91,6 +91,35 @@ const TOOLS = [
     },
   },
   {
+    name: "find_similar_analisis",
+    description:
+      "Busca análisis previos de candidatos similares (mismo cargo + ámbito geográfico, opcionalmente mismo partido). Usar al iniciar un deck nuevo para mostrarle al consultor qué encontraron consultores anteriores en casos parecidos. Devuelve hasta 5 análisis con counts de hallazgos/recomendaciones — el consultor decide cuál abrir si quiere detalle.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        cargo: { type: "string", description: "código de cargo, ej: ALC_DIST, GOB_REG, PRES" },
+        ambito: { type: "string", enum: ["pais", "departamento", "provincia", "distrito"] },
+        partido: { type: "string", description: "código de organización política (opcional)" },
+        exclude_candidato: { type: "integer", description: "candidato_id a excluir (típicamente el actual)" },
+        limit: { type: "integer", description: "1..20 (default 5)" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_benchmarks",
+    description:
+      "Devuelve benchmarks numéricos (p10/p50/p90) por cargo + ámbito geográfico. Útil para que el deck mencione 'el percentil 50 de cobertura territorial para alcaldes de provincia es X%'. Si la DB de benchmarks aún no tiene data para tu cargo, devuelve array vacío y reportás 'aún no hay benchmarks históricos para este corte'.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        cargo: { type: "string" },
+        ambito: { type: "string", enum: ["pais", "departamento", "provincia", "distrito"] },
+      },
+      required: [],
+    },
+  },
+  {
     name: "list_decks",
     description:
       "Lista los decks ya subidos para un candidato (cualquier status: draft/published/rejected). Útil para mostrarle al consultor su histórico antes de crear uno nuevo, o para evitar duplicados.",
@@ -132,6 +161,100 @@ const TOOLS = [
         html: {
           type: "string",
           description: "Contenido HTML completo del deck (self-contained: tailwind por CDN está OK). Máximo 5MB.",
+        },
+        structured: {
+          type: "object",
+          description:
+            "OPCIONAL pero MUY recomendado: payload estructurado con los hallazgos/riesgos/recomendaciones del deck. Goberna lo guarda en su DB de análisis para alimentar benchmarks y futuros decks. Cero costo extra para el consultor — vos (Claude) lo construís a partir del mismo material que pusiste en el deck.",
+          properties: {
+            summary: { type: "string", description: "Abstract del deck (≤2000 chars), searchable" },
+            fecha_corte: { type: "string", description: "YYYY-MM-DD — a qué fecha refiere el análisis" },
+            hallazgos: {
+              type: "array",
+              description: "FODA + libre. Hechos detectados sobre candidato/territorio.",
+              items: {
+                type: "object",
+                properties: {
+                  categoria: { type: "string", enum: ["fortaleza", "debilidad", "oportunidad", "amenaza", "contexto"] },
+                  texto: { type: "string" },
+                  evidencia: { type: "string" },
+                  peso: { type: "number", description: "0..1 importancia subjetiva" },
+                  tags: { type: "array", items: { type: "string" } },
+                },
+                required: ["categoria", "texto"],
+              },
+            },
+            riesgos: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  riesgo: { type: "string" },
+                  severidad: { type: "string", enum: ["baja", "media", "alta", "critica"] },
+                  probabilidad: { type: "string", enum: ["baja", "media", "alta"] },
+                  mitigacion: { type: "string" },
+                  responsable: { type: "string" },
+                },
+                required: ["riesgo", "severidad"],
+              },
+            },
+            oportunidades: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  oportunidad: { type: "string" },
+                  ventana_temporal: { type: "string" },
+                  recursos_necesarios: { type: "string" },
+                  impacto_esperado: { type: "string" },
+                },
+                required: ["oportunidad"],
+              },
+            },
+            competidores: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  partido_codigo: { type: "string" },
+                  partido_nombre: { type: "string" },
+                  candidato_rival: { type: "string" },
+                  fortaleza_relativa: { type: "integer", description: "1..10" },
+                  jurisdiccion_clave: { type: "string" },
+                  notas: { type: "string" },
+                },
+              },
+            },
+            recomendaciones: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  accion: { type: "string" },
+                  area: { type: "string", enum: ["territorio", "digital", "datos", "comunicacion", "organizacion", "financiamiento", "legal", "otro"] },
+                  plazo: { type: "string", enum: ["inmediato", "corto", "mediano", "largo"] },
+                  recursos_estimados: { type: "string" },
+                  kpi_objetivo: { type: "string" },
+                  prioridad: { type: "integer", description: "1..5" },
+                },
+                required: ["accion"],
+              },
+            },
+            kpis: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  nombre: { type: "string" },
+                  valor_actual: { type: "number" },
+                  valor_objetivo: { type: "number" },
+                  unidad: { type: "string" },
+                  fecha_objetivo: { type: "string", description: "YYYY-MM-DD" },
+                },
+                required: ["nombre"],
+              },
+            },
+          },
         },
       },
       required: ["candidato_id", "title", "type", "html"],
@@ -199,6 +322,59 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
+      case "find_similar_analisis": {
+        const params = new URLSearchParams();
+        if (args.cargo) params.set("cargo", String(args.cargo));
+        if (args.ambito) params.set("ambito", String(args.ambito));
+        if (args.partido) params.set("partido", String(args.partido));
+        if (args.exclude_candidato) params.set("exclude_candidato", String(args.exclude_candidato));
+        if (args.limit) params.set("limit", String(args.limit));
+        const data = await api(`/api/consultor/analisis/similar?${params.toString()}`);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  ok: data.ok,
+                  count: data.items?.length ?? 0,
+                  items: data.items ?? [],
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      }
+
+      case "get_benchmarks": {
+        const params = new URLSearchParams();
+        if (args.cargo) params.set("cargo", String(args.cargo));
+        if (args.ambito) params.set("ambito", String(args.ambito));
+        const data = await api(`/api/consultor/benchmarks?${params.toString()}`);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  ok: data.ok,
+                  count: data.items?.length ?? 0,
+                  items: data.items ?? [],
+                  note:
+                    (data.items?.length ?? 0) === 0
+                      ? "Aún no hay benchmarks históricos para este corte. La DB se irá llenando con cada deck que el consultor suba con structured payload."
+                      : null,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      }
+
       case "list_decks": {
         const id = args.candidato_id;
         if (typeof id !== "number" || !Number.isInteger(id)) {
@@ -231,7 +407,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "upload_deck": {
-        const { candidato_id, title, type, description, html } = args;
+        const { candidato_id, title, type, description, html, structured } = args;
         if (typeof candidato_id !== "number" || !Number.isInteger(candidato_id)) {
           throw new Error("candidato_id debe ser entero");
         }
@@ -245,16 +421,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (typeof html !== "string" || html.length < 50) {
           throw new Error("html vacío o demasiado corto");
         }
+        const payload = {
+          candidato_id,
+          title: title.trim(),
+          type,
+          description: description ? String(description).trim() : undefined,
+          html,
+        };
+        if (structured && typeof structured === "object") {
+          payload.structured = structured;
+        }
         const data = await api("/api/consultor/decks", {
           method: "POST",
-          body: JSON.stringify({
-            candidato_id,
-            title: title.trim(),
-            type,
-            description: description ? String(description).trim() : undefined,
-            html,
-          }),
+          body: JSON.stringify(payload),
         });
+        const counts = structured
+          ? {
+              hallazgos: structured.hallazgos?.length ?? 0,
+              riesgos: structured.riesgos?.length ?? 0,
+              oportunidades: structured.oportunidades?.length ?? 0,
+              competidores: structured.competidores?.length ?? 0,
+              recomendaciones: structured.recomendaciones?.length ?? 0,
+              kpis: structured.kpis?.length ?? 0,
+            }
+          : null;
         return {
           content: [
             {
@@ -263,10 +453,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 {
                   ok: data.ok,
                   deck_id: data.deck?.id,
+                  analisis_id: data.deck?.analisis_id ?? null,
                   status: data.deck?.status,
+                  replaced: data.replaced ?? false,
+                  structured_saved: counts,
                   message:
-                    "Deck subido como draft. Admin lo revisará antes de publicarlo. " +
-                    `Preview URL (requiere auth): ${data.deck?.preview_url}`,
+                    "Deck subido como draft. Admin lo revisará antes de publicarlo." +
+                    (counts
+                      ? ` ${Object.values(counts).reduce((a, b) => a + b, 0)} items estructurados guardados en la DB de análisis.`
+                      : " (Sin payload estructurado — considerá pasarlo en el próximo upload)") +
+                    ` Preview URL (requiere auth): ${data.deck?.preview_url}`,
                 },
                 null,
                 2,
