@@ -113,18 +113,22 @@ Si el consultor pide cambios, modificá el archivo en `output/` (no generes uno 
 
 Cuando el consultor diga "este es el final" / "ya está, súbelo":
 
-1. Si el MCP `goberna` está disponible, llamá `upload_deck` con:
+1. **Antes** de subir, llamá `list_decks` con el `candidato_id` y revisá si hay un draft o un rejected del mismo `type`. Si existe un **rejected**, mostrale al consultor el `rejection_reason` y preguntale si lo abordó. No subas a ciegas.
+
+2. Si el MCP `goberna` está disponible, llamá `upload_deck` con:
    - `candidato_id` (el que elegimos en Paso 0)
    - `title` — ej. "Diagnóstico Inicial — Roberto Sánchez"
    - `type` — uno de: `diagnostico` | `analisis` | `plan` | `episodico` | `otro`
    - `description` — resumen breve para que admin entienda contexto
    - `html` — el contenido COMPLETO del archivo en `output/<archivo>.html` (leelo y pasalo entero)
 
-2. Avisá al consultor:
-   > ✅ Deck subido como **draft**. Admin lo va a revisar y publicar.
-   > Una vez publicado, vas a verlo en el portal del candidato.
+3. El backend reemplaza automáticamente cualquier **draft** previo del mismo `(candidato, consultor, type)`. La respuesta trae `replaced: true|false` — si fue `true`, decile al consultor que el draft anterior se sobreescribió (no acumula 5 borradores en admin).
 
-3. **Si MCP no está disponible**: decile al consultor que abra https://electoral.goberna.club/admin/decks y suba el `output/<archivo>.html` manualmente (función todavía no implementada en UI — pedí ayuda al admin).
+4. Avisá al consultor:
+   > ✅ Deck subido como **draft**. Admin lo va a revisar y publicar.
+   > Una vez publicado, lo verás en `Digital → Presentaciones` del portal del candidato.
+
+5. **Si MCP no está disponible**: decile al consultor que se contacte con admin para subirlo manualmente.
 
 Antes de llamar `upload_deck`:
 - Confirmá con el consultor el `title` y `type` exactos
