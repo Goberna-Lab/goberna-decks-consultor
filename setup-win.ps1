@@ -73,29 +73,15 @@ npm install --silent 2>&1 | Out-Null
 Pop-Location
 Write-Host "✓ MCP server listo"
 
-# 7. Token de Goberna
+# 7. Directorio para el token (lo escribe el MCP cuando el consultor hace login)
 $tokenDir = "$HOME\.config\goberna"
 $tokenFile = "$tokenDir\token"
 New-Item -ItemType Directory -Force -Path $tokenDir | Out-Null
-if (-not (Test-Path $tokenFile) -or ((Get-Item $tokenFile).Length -eq 0)) {
-  Write-Host ""
-  Write-Host "════════════════════════════════════════════════" -ForegroundColor Cyan
-  Write-Host "  TOKEN GOBERNA" -ForegroundColor Cyan
-  Write-Host "════════════════════════════════════════════════" -ForegroundColor Cyan
-  Write-Host ""
-  Write-Host "  Pegá el token que te dio el admin (no se va a ver mientras lo escribís)."
-  $token = Read-Host -AsSecureString "  Token"
-  $tokenPlain = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(
-    [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($token)
-  )
-  if ($tokenPlain) {
-    Set-Content -Path $tokenFile -Value $tokenPlain -NoNewline
-    Write-Host "✓ Token guardado"
-  } else {
-    Write-Host "⚠️  Sin token. Pegalo manualmente en: $tokenFile"
-  }
+if ((Test-Path $tokenFile) -and ((Get-Item $tokenFile).Length -gt 0)) {
+  Write-Host "✓ Sesión Goberna ya existe"
 } else {
-  Write-Host "✓ Token ya existe"
+  Write-Host "ℹ Sin sesión todavía — al abrir Claude Desktop por primera vez te"
+  Write-Host "  pedirá tu email + password de electoral.goberna.club via la tool login."
 }
 
 # 8. Configurar Claude Desktop

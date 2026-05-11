@@ -77,31 +77,16 @@ echo "▸ Instalando MCP server..."
 (cd "$WORKDIR/mcp-server" && npm install --silent)
 echo "✓ MCP server listo"
 
-# 7. Token de Goberna
+# 7. Directorio para el token (lo escribe el MCP cuando el consultor hace login)
 TOKEN_DIR="$HOME/.config/goberna"
 TOKEN_FILE="$TOKEN_DIR/token"
 mkdir -p "$TOKEN_DIR"
 chmod 700 "$TOKEN_DIR"
-if [[ ! -f "$TOKEN_FILE" ]] || [[ ! -s "$TOKEN_FILE" ]]; then
-  echo ""
-  echo "════════════════════════════════════════════════"
-  echo "  TOKEN GOBERNA"
-  echo "════════════════════════════════════════════════"
-  echo ""
-  echo "  Pegá el token que te dio el admin (vas a verlo escondido)."
-  echo "  Termina con Enter:"
-  echo ""
-  read -rsp "  Token: " GOBERNA_TOKEN
-  echo ""
-  if [[ -n "$GOBERNA_TOKEN" ]]; then
-    echo "$GOBERNA_TOKEN" > "$TOKEN_FILE"
-    chmod 600 "$TOKEN_FILE"
-    echo "✓ Token guardado"
-  else
-    echo "⚠️  Sin token. Pegalo manualmente después en: $TOKEN_FILE"
-  fi
+if [[ -f "$TOKEN_FILE" ]] && [[ -s "$TOKEN_FILE" ]]; then
+  echo "✓ Sesión Goberna ya existe en $TOKEN_FILE"
 else
-  echo "✓ Token ya existe en $TOKEN_FILE"
+  echo "ℹ Sin sesión Goberna todavía — al abrir Claude Desktop por primera vez te"
+  echo "  pedirá tu email + password de electoral.goberna.club via la tool login."
 fi
 
 # 8. Configurar Claude Desktop para cargar el MCP `goberna`
