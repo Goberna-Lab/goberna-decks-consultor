@@ -399,6 +399,62 @@ const TOOLS = [
       required: ["candidato_id", "title", "type", "html"],
     },
   },
+
+  // ── Fase 2 flow nuevo: editar consultor_form del candidato ────────────────
+
+  {
+    name: "open_fase2",
+    description:
+      "Abre el Fase 2 deck del candidato por slug de campaña. Devuelve snapshot del onboarding (candidato, cargo, jurisdicción, partido) + consultor_form actual (lo que ya está editado) + status del deck (draft/pending_review/published/rejected) + URL del admin review. Es el equivalente al 'arrancar-deck' del flujo Fase 2 — devuelve TODO el estado en una sola call. Usalo inmediatamente cuando el consultor diga 'abrí Fase 2 de [nombre]' o 'trabajemos Fase 2 de [slug]'.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: {
+          type: "string",
+          description:
+            "Slug de la campaña del candidato (ej: 'leonardo-jurado'). Si tenés solo el nombre, llamá primero list_candidates para mapear.",
+        },
+      },
+      required: ["slug"],
+    },
+  },
+
+  {
+    name: "set_fase2_field",
+    description:
+      "Actualiza un campo (o varios) del consultor_form del Fase 2 deck. Hace deep-merge nivel-1: cualquier sección que vienen reemplaza la existente; lo que no mandás queda igual. Las secciones del form son:\n\n• ficha_basica: { dni?, edad?, profesion? }\n• rol_usuario: { filler_role?: 'consultor'|'cartografo'|'candidato'|'admin' }\n• analisis_electoral: { comentario_consultor?, ranking_partido_zona? }\n• votos_para_ganar: { votos_ganador_anterior?, padron_actual?, votos_meta?, fuente? }\n• partidos: { observaciones?, top_partidos?[] }\n• historial: { entries?[], nunca_postulo?, observaciones? }\n• formula_electoral: { presupuesto_total?, peso_aire?, peso_mar?, peso_tierra?, justificacion? }\n• recorrido_estrategico: { hitos?[] }\n• presencia_digital: { web_oficial?, google_results?, redes_verificadas?, info_clave?: 'ok'|'review'|'flag', notas? }\n• redes_sociales: { candidato?: {facebook?, instagram?, tiktok?, twitter?, youtube?, web_oficial?}, adversarios?[] }\n• debilidades: { fuentes?[{key:'denuncias'|'google'|'reputacion_redes'|'jne_observaciones', estado:'ok'|'review'|'flag', hallazgos?[]}], lista_libre?[] }\n• quien_es: { texto_libre?, trayectoria?, valores?[] }\n\nDespués de cada cambio importante, decile al consultor: 'Listo, actualizado en producción. Refrescá la pestaña del browser para ver.'",
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: {
+          type: "string",
+          description: "Slug de la campaña del candidato",
+        },
+        patch: {
+          type: "object",
+          description:
+            "Subset del consultor_form (cualquier combinación de secciones). El backend hace deep-merge.",
+        },
+      },
+      required: ["slug", "patch"],
+    },
+  },
+
+  {
+    name: "submit_fase2_for_review",
+    description:
+      "Marca el Fase 2 deck del candidato como pending_review. Devuelve la URL admin (https://electoral.goberna.club/admin/fase2/<slug>) que el consultor copia/pega a proyecto@grupogoberna para que apruebe. Llamalo cuando el consultor diga 'manda a aprobación' / 'listo, a aprobar' / 'pasalo al admin' / similar. NO publica directamente — el admin tiene que abrir la URL y clickear Aprobar.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: {
+          type: "string",
+          description: "Slug de la campaña",
+        },
+      },
+      required: ["slug"],
+    },
+  },
 ];
 
 // ── Server setup ────────────────────────────────────────────────────────
@@ -406,7 +462,7 @@ const TOOLS = [
 const server = new Server(
   {
     name: "goberna-mcp",
-    version: "0.3.0",
+    version: "0.4.0",
   },
   {
     capabilities: {
@@ -500,10 +556,98 @@ Cuando el consultor diga "subilo" / "publicalo" / "listo":
 
 Listo. Llamá \`list_candidates\` ahora.`;
 
+const EDITAR_FASE2_INSTRUCTIONS = `Sos el asistente de un consultor político de Goberna trabajando sobre el **Fase 2 deck** de un candidato. Tu rol es **enriquecer progresivamente el consultor_form** (el JSON editable del deck) y submitirlo a aprobación cuando el consultor lo decida.
+
+## Reglas básicas
+- Fase 1 = onboarding del consultor (ya hecho, no se toca). Fase 2 = deliverable del cliente.
+- El deck Fase 2 vive en \`https://electoral.goberna.club/admin/fase2/<slug>\` (admin / consultor con global_access lo abren ahí).
+- Tu trabajo: leer el form, preguntar por las secciones más impactantes vacías, editarlas vía \`set_fase2_field\`, y mandar a aprobación con \`submit_fase2_for_review\`.
+- Idioma: **español peruano** (tú, tienes, dime). NO uses voseo argentino (vos, tenés).
+- NO toques HTML. NO uses bootstrap_deck ni upload_deck. Esos eran del flujo legacy.
+
+## Workflow
+
+### Paso 1 — Identificar el candidato
+1. Si el consultor te da un nombre o slug, llamá \`list_candidates\` y matchealo con el campaign_slug.
+2. Llamá \`open_fase2({slug})\`. Devuelve: snapshot (cargo/jurisdicción/partido), consultor_form actual, status del deck, URL admin.
+
+### Paso 2 — Diagnóstico rápido al consultor
+Decile en 2-3 líneas qué tiene y qué falta:
+> "Abriendo Fase 2 de **<full_name>** (<cargo>, <jurisdiccion>, <partido>). Form actual: <sections_filled>. Status: <status>. ¿En qué slide te quieres enfocar?"
+
+Si el form está vacío, sugerí 3 secciones de alto impacto: **redes_sociales**, **debilidades**, **votos_para_ganar**.
+
+### Paso 3 — Edición focalizada
+El consultor te dice "trabajemos las redes" o "agreguemos las debilidades" o "actualicemos el presupuesto". Vos:
+
+1. Hacé preguntas **una a una** (no soltarle 10 juntas).
+2. Después de cada respuesta, llamá \`set_fase2_field({slug, patch: {<seccion>: {...}}})\`.
+3. Confirmá con una línea: "✅ Actualizado <seccion>. Refrescá <URL> para ver."
+
+### Ejemplos de patches
+
+**Redes sociales del candidato + 3 adversarios:**
+\`\`\`json
+{
+  "redes_sociales": {
+    "candidato": { "facebook": "https://facebook.com/leonardo.jurado", "instagram": "https://instagram.com/leojurado", "tiktok": "https://tiktok.com/@leojurado", "web_oficial": "https://leonardojurado.pe" },
+    "adversarios": [
+      { "nombre": "Rosa Bartra", "partido": "Avanza País", "redes": { "facebook": "https://facebook.com/rosabartra" } },
+      { "nombre": "Hernando Cevallos", "partido": "Perú Libre", "redes": { "instagram": "https://instagram.com/hcevallos" } },
+      { "nombre": "Lourdes Flores", "partido": "PPC", "redes": { "tiktok": "https://tiktok.com/@lflores" } }
+    ]
+  }
+}
+\`\`\`
+
+**Debilidades (auditoría):**
+\`\`\`json
+{
+  "debilidades": {
+    "fuentes": [
+      { "key": "denuncias", "estado": "flag", "hallazgos": ["Carpeta fiscal 2019 por difamación — archivada"] },
+      { "key": "google", "estado": "review", "hallazgos": ["Primeros 3 resultados: nota La República 2022 positiva"] },
+      { "key": "reputacion_redes", "estado": "ok" },
+      { "key": "jne_observaciones", "estado": "ok" }
+    ],
+    "lista_libre": [
+      { "titulo": "Falta web oficial", "descripcion": "Adversario 1 ya tiene", "severidad": "media" }
+    ]
+  }
+}
+\`\`\`
+
+**Votos para ganar:**
+\`\`\`json
+{ "votos_para_ganar": { "votos_ganador_anterior": 12450, "padron_actual": 48200, "votos_meta": 18500, "fuente": "ONPE 2022 + RENIEC 2026" } }
+\`\`\`
+
+**Fórmula electoral (aire/mar/tierra):**
+\`\`\`json
+{ "formula_electoral": { "presupuesto_total": 120000, "peso_aire": 20, "peso_mar": 50, "peso_tierra": 30, "justificacion": "Provincia con alta penetración móvil — mar prima. Aire solo en cierre." } }
+\`\`\`
+
+### Paso 4 — Mandar a aprobación
+Cuando el consultor diga "listo, manda a aprobar" / "ya está, al admin" / "submit":
+1. Llamá \`submit_fase2_for_review({slug})\`.
+2. Devuelve admin_review_url. Pasásela al consultor explícita y resumida:
+
+> ✅ Listo. El deck está en **Por aprobar**. Mandá esta URL a proyecto@grupogoberna:
+> https://electoral.goberna.club/admin/fase2/<slug>
+
+NO llames bootstrap_deck ni upload_deck nunca. Esos son legacy. **TODO el flujo Fase 2 pasa por open_fase2 + set_fase2_field + submit_fase2_for_review.**
+
+Listo. Si el consultor ya dio un nombre, llamá \`list_candidates\` ahora; si no, preguntale "¿con qué candidato trabajamos?"`;
+
 const PROMPTS = [
   {
     name: "arrancar-deck",
     description: "Inicia el flow Goberna: lista tus candidatos, elegí uno, armamos el deck con el formato y lo subimos al portal.",
+    arguments: [],
+  },
+  {
+    name: "editar-fase2",
+    description: "Flujo Fase 2: edita el consultor_form de un candidato, manda a aprobación. Para uso continuo con un mismo candidato.",
     arguments: [],
   },
 ];
@@ -513,18 +657,24 @@ server.setRequestHandler(ListPromptsRequestSchema, async () => ({
 }));
 
 server.setRequestHandler(GetPromptRequestSchema, async (request) => {
-  if (request.params.name !== "arrancar-deck") {
-    throw new Error(`Prompt desconocido: ${request.params.name}`);
+  const name = request.params.name;
+  if (name === "arrancar-deck") {
+    return {
+      description: "Workflow legacy: HTML deck standalone (deprecado — usar editar-fase2)",
+      messages: [
+        { role: "user", content: { type: "text", text: ARRANCAR_DECK_INSTRUCTIONS } },
+      ],
+    };
   }
-  return {
-    description: "Workflow Goberna para armar y subir un deck",
-    messages: [
-      {
-        role: "user",
-        content: { type: "text", text: ARRANCAR_DECK_INSTRUCTIONS },
-      },
-    ],
-  };
+  if (name === "editar-fase2") {
+    return {
+      description: "Flujo Fase 2: editar consultor_form + mandar a aprobación admin",
+      messages: [
+        { role: "user", content: { type: "text", text: EDITAR_FASE2_INSTRUCTIONS } },
+      ],
+    };
+  }
+  throw new Error(`Prompt desconocido: ${name}`);
 });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -1007,6 +1157,157 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             },
           ],
         };
+      }
+
+      // ── Fase 2 flow nuevo ────────────────────────────────────────────
+
+      case "open_fase2": {
+        const slug = args.slug;
+        if (typeof slug !== "string" || slug.length < 1) {
+          throw new Error("slug requerido");
+        }
+        const data = await api(`/api/consultor/fase2/by-candidato/${encodeURIComponent(slug)}`);
+        const snap = data.snapshot ?? {};
+        const deck = data.deck ?? {};
+        const adminUrl = `${API_URL}/admin/fase2/${encodeURIComponent(slug)}`;
+        const formKeys = Object.keys(deck.consultor_form ?? {});
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  ok: data.ok,
+                  candidato: {
+                    user_id: snap.user?.id,
+                    full_name: snap.user?.full_name,
+                    foto_url: undefined, // omitido para no inflar context
+                    campaign_slug: snap.campaign?.slug,
+                    cargo: snap.cargo?.nombre,
+                    cargo_codigo: snap.cargo?.codigo,
+                    ambito: snap.cargo?.ambito,
+                    jurisdiccion:
+                      snap.jurisdiccion?.distrito?.nombre ??
+                      snap.jurisdiccion?.provincia?.nombre ??
+                      snap.jurisdiccion?.departamento?.nombre ??
+                      snap.jurisdiccion?.pais?.nombre,
+                    partido: snap.organizacion_politica?.nombre,
+                  },
+                  deck: {
+                    id: deck.id,
+                    status: deck.status,
+                    submitted_for_review_at: deck.submitted_for_review_at,
+                    published_at: deck.published_at,
+                    rejection_reason: deck.rejection_reason,
+                    updated_at: deck.updated_at,
+                  },
+                  consultor_form: deck.consultor_form ?? {},
+                  consultor_form_sections_filled: formKeys,
+                  admin_review_url: adminUrl,
+                  hint:
+                    formKeys.length === 0
+                      ? "El form está vacío. Empezá preguntando al consultor por las secciones más prioritarias (sugerencia: redes_sociales y debilidades primero, después ficha_basica)."
+                      : `El form ya tiene data en ${formKeys.length} sección(es). Preguntá al consultor en qué slide quiere enfocarse.`,
+                },
+                null,
+                0,
+              ),
+            },
+          ],
+        };
+      }
+
+      case "set_fase2_field": {
+        const slug = args.slug;
+        const patch = args.patch;
+        if (typeof slug !== "string" || slug.length < 1) {
+          throw new Error("slug requerido");
+        }
+        if (!patch || typeof patch !== "object" || Array.isArray(patch)) {
+          throw new Error("patch debe ser un objeto");
+        }
+        const data = await api(
+          `/api/consultor/fase2/by-candidato/${encodeURIComponent(slug)}/form`,
+          {
+            method: "PATCH",
+            body: JSON.stringify(patch),
+          },
+        );
+        const sectionsTouched = Object.keys(patch);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  ok: data.ok,
+                  deck_id: data.deck?.id,
+                  status: data.deck?.status,
+                  sections_touched: sectionsTouched,
+                  updated_at: data.deck?.updated_at,
+                  message: `Actualizado: ${sectionsTouched.join(", ")}. El cambio ya está en producción — el consultor puede refrescar el browser para ver.`,
+                },
+                null,
+                0,
+              ),
+            },
+          ],
+        };
+      }
+
+      case "submit_fase2_for_review": {
+        const slug = args.slug;
+        if (typeof slug !== "string" || slug.length < 1) {
+          throw new Error("slug requerido");
+        }
+        try {
+          const data = await api(
+            `/api/consultor/fase2/by-candidato/${encodeURIComponent(slug)}/submit`,
+            { method: "POST", body: "{}" },
+          );
+          const adminUrl = `${API_URL}/admin/fase2/${encodeURIComponent(slug)}`;
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    ok: data.ok,
+                    deck_id: data.deck?.id,
+                    status: data.deck?.status,
+                    submitted_for_review_at: data.deck?.submitted_for_review_at,
+                    admin_review_url: adminUrl,
+                    message: `Mandado a aprobación. Decile al consultor: "✅ Listo, el deck pasó a status 'Por aprobar'. Mandá esta URL a proyecto@grupogoberna para que lo apruebe: ${adminUrl}"`,
+                  },
+                  null,
+                  0,
+                ),
+              },
+            ],
+          };
+        } catch (e) {
+          if (String(e.message).includes("DECK_ALREADY_PENDING")) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Ya está en revisión. URL admin: ${API_URL}/admin/fase2/${encodeURIComponent(slug)}`,
+                },
+              ],
+            };
+          }
+          if (String(e.message).includes("DECK_ALREADY_PUBLISHED")) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Ya está publicado. Visible en: ${API_URL}/candidatos/${encodeURIComponent(slug)}/digital/decks`,
+                },
+              ],
+            };
+          }
+          throw e;
+        }
       }
 
       default:
