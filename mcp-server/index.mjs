@@ -520,6 +520,23 @@ const TOOLS = [
   },
 
   {
+    name: "record_note",
+    description:
+      "Agrega una nota libre a la bitácora del Fase 2 deck del candidato. La bitácora persiste entre sesiones — Claude la lee al abrir Fase 2 la próxima vez para tener contexto. Llamar cuando el consultor:\n• Comparte una observación que querés guardar: 'el rival X está bajando, tomá nota'\n• Decide algo no-trivial: 'definimos por ahora un budget de 80K'\n• Te pide al final de una sesión que dejes un resumen para el próximo agente\n\nLas notas son auditables (quedan con timestamp + autor) y permiten que el análisis del consultor se vaya enriqueciendo cada sesión. SIN esto, cada conversación arranca de cero.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: { type: "string", description: "Slug de la campaña" },
+        nota: {
+          type: "string",
+          description: "Texto libre (2–2000 chars). Sé conciso pero específico — debe ser útil para el próximo agente.",
+        },
+      },
+      required: ["slug", "nota"],
+    },
+  },
+
+  {
     name: "submit_fase2_for_review",
     description:
       "Marca el Fase 2 deck del candidato como pending_review. Devuelve la URL admin (https://electoral.goberna.club/admin/fase2/<slug>) que el consultor copia/pega a proyecto@grupogoberna para que apruebe. Llamalo cuando el consultor diga 'manda a aprobación' / 'listo, a aprobar' / 'pasalo al admin' / similar. NO publica directamente — el admin tiene que abrir la URL y clickear Aprobar.",
@@ -541,7 +558,7 @@ const TOOLS = [
 const server = new Server(
   {
     name: "goberna-mcp",
-    version: "0.5.0",
+    version: "0.6.0",
   },
   {
     capabilities: {
@@ -656,7 +673,14 @@ const EDITAR_FASE2_INSTRUCTIONS = `Sos el asistente de un consultor político de
 ### Paso 1 — Identificar el candidato
 1. Llamá \`list_candidates\` — devuelve los candidatos asignados al consultor logged-in.
 2. Si el consultor te da un nombre, matchealo con \`campaign_slug\` o \`candidato_nombres\`. Si hay ambigüedad, mostrá las opciones con AskUserQuestion.
-3. Llamá \`open_fase2({slug})\`. Devuelve: snapshot (cargo/jurisdicción/partido), consultor_form actual, status del deck, URL admin.
+3. Llamá \`open_fase2({slug})\`. Devuelve: snapshot (cargo/jurisdicción/partido), consultor_form actual, **bitacora_recent (últimas 10 entradas)**, status del deck, URL admin.
+
+### Paso 1.5 — Leer la bitácora ANTES de preguntar nada
+Si \`bitacora_total_entries > 0\` y/o \`bitacora_recent\` tiene contenido:
+- Leé las notas. Cada una es un \`{ts, accion, campos_tocados?, nota?}\`.
+- **NO repreguntes** cosas que ya quedaron resueltas en sesiones previas.
+- Si el consultor pregunta "¿dónde estábamos?", resumí lo último que se hizo en 2-3 líneas usando la bitácora.
+- Si encontrás una nota del estilo "queda pendiente X" / "el próximo agente debería Y", arrancá por ahí.
 
 ### Paso 2 — Diagnóstico rápido al consultor
 Decile en 2-3 líneas qué tiene y qué falta:
@@ -713,6 +737,14 @@ El consultor te dice "trabajemos las redes" o "agreguemos las debilidades" o "ac
 \`\`\`json
 { "formula_electoral": { "presupuesto_total": 120000, "peso_aire": 20, "peso_mar": 50, "peso_tierra": 30, "justificacion": "Provincia con alta penetración móvil — mar prima. Aire solo en cierre." } }
 \`\`\`
+
+### Paso 3.5 — Tomar notas para sesiones futuras
+Durante la conversación, si el consultor comparte algo no-trivial que no calza en un campo del form (una observación, una decisión, una hipótesis), llamá \`record_note({slug, nota})\`. Ejemplos:
+- "Anotá que el adversario X bajó 8 puntos en la última encuesta de IPSOS"
+- "Quedamos en que el presupuesto se confirma con junta directiva el viernes"
+- "Para el próximo agente: ya descartamos hacer aire en TV — solo radio AM regional"
+
+Estas notas persisten en la bitácora y son lo que hace que el análisis del consultor **evolucione sesión tras sesión** en lugar de empezar de cero.
 
 ### Paso 4 — Mandar a aprobación
 Cuando el consultor diga "listo, manda a aprobar" / "ya está, al admin" / "submit":
@@ -1377,8 +1409,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const data = await api(`/api/consultor/fase2/by-candidato/${encodeURIComponent(slug)}`);
         const snap = data.snapshot ?? {};
         const deck = data.deck ?? {};
+        const form = deck.consultor_form ?? {};
         const adminUrl = `${API_URL}/admin/fase2/${encodeURIComponent(slug)}`;
-        const formKeys = Object.keys(deck.consultor_form ?? {});
+        const formKeys = Object.keys(form).filter((k) => k !== "bitacora");
+        // Bitácora: últimas 10 entradas para no inflar context
+        const bitacoraFull = Array.isArray(form.bitacora) ? form.bitacora : [];
+        const bitacoraRecent = bitacoraFull.slice(-10);
         return {
           content: [
             {
@@ -1409,13 +1445,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     rejection_reason: deck.rejection_reason,
                     updated_at: deck.updated_at,
                   },
-                  consultor_form: deck.consultor_form ?? {},
+                  consultor_form: form,
                   consultor_form_sections_filled: formKeys,
+                  bitacora_total_entries: bitacoraFull.length,
+                  bitacora_recent: bitacoraRecent,
                   admin_review_url: adminUrl,
                   hint:
-                    formKeys.length === 0
-                      ? "El form está vacío. Empezá preguntando al consultor por las secciones más prioritarias (sugerencia: redes_sociales y debilidades primero, después ficha_basica)."
-                      : `El form ya tiene data en ${formKeys.length} sección(es). Preguntá al consultor en qué slide quiere enfocarse.`,
+                    formKeys.length === 0 && bitacoraFull.length === 0
+                      ? "El form está vacío y no hay bitácora previa. Empezá preguntando al consultor por las secciones más prioritarias (sugerencia: redes_sociales y debilidades primero, después ficha_basica)."
+                      : bitacoraFull.length > 0
+                        ? `Form tiene data en ${formKeys.length} sección(es). Bitácora con ${bitacoraFull.length} entradas (te mando las últimas 10 — leelas antes de preguntarle al consultor para no repetir trabajo ya hecho).`
+                        : `Form tiene data en ${formKeys.length} sección(es). Preguntá al consultor en qué slide quiere enfocarse.`,
                 },
                 null,
                 0,
@@ -1454,6 +1494,40 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                   sections_touched: sectionsTouched,
                   updated_at: data.deck?.updated_at,
                   message: `Actualizado: ${sectionsTouched.join(", ")}. El cambio ya está en producción — el consultor puede refrescar el browser para ver.`,
+                },
+                null,
+                0,
+              ),
+            },
+          ],
+        };
+      }
+
+      case "record_note": {
+        const slug = args.slug;
+        const nota = args.nota;
+        if (typeof slug !== "string" || slug.length < 1) {
+          throw new Error("slug requerido");
+        }
+        if (typeof nota !== "string" || nota.length < 2) {
+          throw new Error("nota requerida (mín 2 chars)");
+        }
+        const data = await api(
+          `/api/consultor/fase2/by-candidato/${encodeURIComponent(slug)}/note`,
+          {
+            method: "POST",
+            body: JSON.stringify({ nota }),
+          },
+        );
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  ok: data.ok,
+                  deck_id: data.deck_id,
+                  message: "📝 Nota agregada a la bitácora. La verás la próxima vez que abras este candidato.",
                 },
                 null,
                 0,
