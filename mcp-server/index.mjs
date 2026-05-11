@@ -21,9 +21,9 @@ import {
   ListPromptsRequestSchema,
   GetPromptRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, unlinkSync, mkdirSync, chmodSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 // ── Config ──────────────────────────────────────────────────────────────
 const API_URL = process.env.GOBERNA_API_URL ?? "https://electoral.goberna.club";
@@ -33,11 +33,57 @@ const TOKEN_PATH =
 function readToken() {
   if (!existsSync(TOKEN_PATH)) {
     throw new Error(
-      `No se encontró tu token en ${TOKEN_PATH}.\n` +
-        `Pedile al admin de Goberna que te genere uno y guardalo en ese archivo.`,
+      `NO_TOKEN: No estás logged in. Llamá la tool 'login' con tu email y password del portal Goberna (electoral.goberna.club) — la misma cuenta del consultor.`,
     );
   }
   return readFileSync(TOKEN_PATH, "utf8").trim();
+}
+
+function writeToken(token) {
+  const dir = dirname(TOKEN_PATH);
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+  }
+  writeFileSync(TOKEN_PATH, token, { mode: 0o600 });
+  try {
+    chmodSync(TOKEN_PATH, 0o600);
+  } catch {
+    /* algunos FS no permiten chmod (Windows), ignoramos */
+  }
+}
+
+function deleteToken() {
+  if (existsSync(TOKEN_PATH)) {
+    unlinkSync(TOKEN_PATH);
+  }
+}
+
+/**
+ * Versión sin token de api() — usada por login() porque todavía no hay token.
+ */
+async function apiNoAuth(path, init = {}) {
+  const res = await fetch(`${API_URL}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      ...(init.headers ?? {}),
+    },
+  });
+  if (!res.ok) {
+    let body = null;
+    try {
+      body = await res.json();
+    } catch {
+      body = await res.text().catch(() => null);
+    }
+    const code = typeof body === "object" && body?.code ? body.code : `HTTP_${res.status}`;
+    const msg = typeof body === "object" && body?.message ? body.message : `HTTP ${res.status}`;
+    const err = new Error(`Goberna API ${path} → ${msg}`);
+    err.code = code;
+    throw err;
+  }
+  return res.json();
 }
 
 async function api(path, init = {}) {
@@ -67,6 +113,39 @@ async function api(path, init = {}) {
 // ── Tool definitions ────────────────────────────────────────────────────
 
 const TOOLS = [
+  // ── Auth ──
+  {
+    name: "login",
+    description:
+      "Inicia sesión en Goberna con email + password (la misma cuenta del portal electoral.goberna.club). Guarda el JWT localmente para las siguientes llamadas. **LLAMAR AUTOMÁTICAMENTE cuando otra tool devuelva error NO_TOKEN, o cuando el consultor diga 'login' / 'iniciar sesión' / 'mi cuenta es ...'.** Si tu prompt actual no tiene credenciales, preguntale al consultor por su email y password antes de llamar — son los del portal Goberna.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        email: {
+          type: "string",
+          description: "Email del consultor (o número de teléfono si así se registró). Lo que usa en electoral.goberna.club.",
+        },
+        password: {
+          type: "string",
+          description: "Password del portal Goberna.",
+        },
+      },
+      required: ["email", "password"],
+    },
+  },
+  {
+    name: "logout",
+    description:
+      "Borra el token local. La próxima llamada va a pedir login. Usar si el consultor dice 'cerrar sesión' / 'logout' / 'cambiar de cuenta'.",
+    inputSchema: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "whoami",
+    description:
+      "Devuelve quién está logged-in actualmente (full_name, email, role, campaign asignada si existe). Llamar al inicio de cada conversación nueva para confirmar identidad antes de empezar a operar. Si no hay token, devuelve un mensaje sugiriendo `login`.",
+    inputSchema: { type: "object", properties: {}, required: [] },
+  },
+
   {
     name: "list_candidates",
     description:
@@ -462,7 +541,7 @@ const TOOLS = [
 const server = new Server(
   {
     name: "goberna-mcp",
-    version: "0.4.0",
+    version: "0.5.0",
   },
   {
     capabilities: {
@@ -567,9 +646,17 @@ const EDITAR_FASE2_INSTRUCTIONS = `Sos el asistente de un consultor político de
 
 ## Workflow
 
+### Paso 0 — Auth
+1. Llamá \`whoami\` para confirmar sesión activa.
+2. Si devuelve "No hay sesión activa" o si cualquier tool falla con \`NO_TOKEN\`:
+   - Pedile al consultor: "¿Cuál es tu email y password de electoral.goberna.club?"
+   - Esperá las dos respuestas (una a una, sin presionar) y llamá \`login({email, password})\`.
+   - Si \`login\` devuelve credenciales incorrectas, decile que verifique en el portal y vuelva a darte el password.
+
 ### Paso 1 — Identificar el candidato
-1. Si el consultor te da un nombre o slug, llamá \`list_candidates\` y matchealo con el campaign_slug.
-2. Llamá \`open_fase2({slug})\`. Devuelve: snapshot (cargo/jurisdicción/partido), consultor_form actual, status del deck, URL admin.
+1. Llamá \`list_candidates\` — devuelve los candidatos asignados al consultor logged-in.
+2. Si el consultor te da un nombre, matchealo con \`campaign_slug\` o \`candidato_nombres\`. Si hay ambigüedad, mostrá las opciones con AskUserQuestion.
+3. Llamá \`open_fase2({slug})\`. Devuelve: snapshot (cargo/jurisdicción/partido), consultor_form actual, status del deck, URL admin.
 
 ### Paso 2 — Diagnóstico rápido al consultor
 Decile en 2-3 líneas qué tiene y qué falta:
@@ -686,6 +773,127 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   try {
     switch (name) {
+      // ── Auth ────────────────────────────────────────────────────────
+
+      case "login": {
+        const email = args.email;
+        const password = args.password;
+        if (typeof email !== "string" || email.length < 3) {
+          throw new Error("email requerido");
+        }
+        if (typeof password !== "string" || password.length < 1) {
+          throw new Error("password requerido");
+        }
+        try {
+          const data = await apiNoAuth("/api/auth/login", {
+            method: "POST",
+            body: JSON.stringify({ identifier: email, password }),
+          });
+          const token = data.access_token;
+          if (typeof token !== "string" || token.length < 10) {
+            throw new Error("login OK pero el server no devolvió access_token");
+          }
+          writeToken(token);
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    ok: true,
+                    user: {
+                      id: data.user?.id,
+                      full_name: data.user?.full_name,
+                      email: data.user?.email,
+                      role: data.user?.role,
+                    },
+                    token_saved_to: TOKEN_PATH,
+                    expires_in_seconds: data.expires_in ?? null,
+                    message: `✅ Logged in como ${data.user?.full_name ?? data.user?.email}. Ya puedes usar las demás tools.`,
+                  },
+                  null,
+                  0,
+                ),
+              },
+            ],
+          };
+        } catch (e) {
+          if (String(e.message).includes("AUTH_INVALID_CREDENTIALS") || String(e.message).includes("401")) {
+            return {
+              isError: true,
+              content: [
+                {
+                  type: "text",
+                  text: "❌ Credenciales incorrectas. Verificá email + password en https://electoral.goberna.club/login y volvé a intentar.",
+                },
+              ],
+            };
+          }
+          throw e;
+        }
+      }
+
+      case "logout": {
+        const wasLoggedIn = existsSync(TOKEN_PATH);
+        deleteToken();
+        return {
+          content: [
+            {
+              type: "text",
+              text: wasLoggedIn
+                ? "✅ Sesión cerrada. Llamá 'login' otra vez cuando quieras."
+                : "No había sesión activa.",
+            },
+          ],
+        };
+      }
+
+      case "whoami": {
+        if (!existsSync(TOKEN_PATH)) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: "No hay sesión activa. Llamá la tool 'login' con email + password del portal Goberna (electoral.goberna.club).",
+              },
+            ],
+          };
+        }
+        try {
+          const data = await api("/api/auth/me");
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    ok: true,
+                    user: data.user ?? data,
+                    message: `Logged in como ${data.user?.full_name ?? data.user?.email ?? "—"}.`,
+                  },
+                  null,
+                  0,
+                ),
+              },
+            ],
+          };
+        } catch (e) {
+          if (String(e.message).includes("401")) {
+            deleteToken();
+            return {
+              isError: true,
+              content: [
+                {
+                  type: "text",
+                  text: "Token expirado. Llamá 'login' otra vez.",
+                },
+              ],
+            };
+          }
+          throw e;
+        }
+      }
+
       case "list_candidates": {
         const data = await api("/api/consultor/candidates");
         // Slim: omitir foto_url (puede ser base64 grande) + ids redundantes.
