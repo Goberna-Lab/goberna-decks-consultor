@@ -519,6 +519,174 @@ const TOOLS = [
     },
   },
 
+  // ── Tools por SECCIÓN — alternativa más guiada que set_fase2_field ────────
+  // Cada una mapea 1:1 a una sección del consultor_form. Args tipados.
+  // Si pasás un campo vacío (string vacía) lo borrás del form.
+
+  {
+    name: "set_ficha_basica",
+    description:
+      "Actualiza el slide Ficha Básica (Lámina 1) del Fase 2 deck. Args:\n• dni: string DNI peruano (8 dígitos)\n• edad: int 18..120\n• profesion: string\nCualquier campo omitido se ignora; campo en string vacía lo borra.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: { type: "string" },
+        dni: { type: "string" },
+        edad: { type: "integer", minimum: 18, maximum: 120 },
+        profesion: { type: "string" },
+      },
+      required: ["slug"],
+    },
+  },
+  {
+    name: "set_quien_es",
+    description:
+      "Actualiza el slide Quién es (Sección 9). Args:\n• texto_libre: bio del candidato (1-3 frases, idealmente <300 chars)\n• trayectoria: trayectoria profesional/política (1-2 frases)\n• valores: array de tags (3-5 valores como 'Honestidad', 'Estado de derecho')",
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: { type: "string" },
+        texto_libre: { type: "string" },
+        trayectoria: { type: "string" },
+        valores: { type: "array", items: { type: "string" }, maxItems: 6 },
+      },
+      required: ["slug"],
+    },
+  },
+  {
+    name: "set_votos_para_ganar",
+    description:
+      "Actualiza el slide Votos para Ganar (Sección 3). Args:\n• votos_ganador_anterior: int (votos absolutos del ganador en la última elección de ese cargo)\n• padron_actual: int (electores hábiles según RENIEC)\n• votos_meta: int (objetivo del candidato — Goberna calcula con +5% margen sobre ganador anterior)\n• fuente: string (ej: 'ONPE 2021 · RENIEC 2026')",
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: { type: "string" },
+        votos_ganador_anterior: { type: "integer", minimum: 0 },
+        padron_actual: { type: "integer", minimum: 0 },
+        votos_meta: { type: "integer", minimum: 0 },
+        fuente: { type: "string" },
+      },
+      required: ["slug"],
+    },
+  },
+  {
+    name: "set_formula_electoral",
+    description:
+      "Actualiza el slide Fórmula Electoral (aire/mar/tierra). Args:\n• presupuesto_total: number (en soles PEN)\n• peso_aire/mar/tierra: porcentaje 0-100. La suma idealmente da 100\n• justificacion: por qué esa mezcla (1-3 frases)\n\nGuías:\n• Aire (TV/radio): caro pero alcance masivo. >30% solo en presidenciales o departamentales\n• Mar (digital/redes): siempre relevante, mínimo 25%\n• Tierra (territorio/brigadas): 30-50% en municipales, menos en presidencial",
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: { type: "string" },
+        presupuesto_total: { type: "number", minimum: 0 },
+        peso_aire: { type: "number", minimum: 0, maximum: 100 },
+        peso_mar: { type: "number", minimum: 0, maximum: 100 },
+        peso_tierra: { type: "number", minimum: 0, maximum: 100 },
+        justificacion: { type: "string" },
+      },
+      required: ["slug"],
+    },
+  },
+  {
+    name: "set_redes_sociales",
+    description:
+      "Actualiza el slide Redes Sociales (Sección 7). Args:\n• candidato: handles propios — facebook, instagram, tiktok, twitter, youtube, web_oficial (URLs completas https://…)\n• adversarios: array de hasta 3 — {nombre, partido?, redes: {facebook?, instagram?, tiktok?, ...}}\n\nEjemplo: { slug:'leonardo', candidato:{facebook:'https://facebook.com/leo', instagram:'https://instagram.com/leo'}, adversarios:[{nombre:'Rival X', partido:'XYZ', redes:{tiktok:'https://tiktok.com/@rivalx'}}] }",
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: { type: "string" },
+        candidato: {
+          type: "object",
+          properties: {
+            facebook: { type: "string" },
+            instagram: { type: "string" },
+            tiktok: { type: "string" },
+            twitter: { type: "string" },
+            youtube: { type: "string" },
+            web_oficial: { type: "string" },
+          },
+        },
+        adversarios: {
+          type: "array",
+          maxItems: 5,
+          items: {
+            type: "object",
+            properties: {
+              nombre: { type: "string" },
+              partido: { type: "string" },
+              redes: {
+                type: "object",
+                properties: {
+                  facebook: { type: "string" },
+                  instagram: { type: "string" },
+                  tiktok: { type: "string" },
+                  twitter: { type: "string" },
+                  youtube: { type: "string" },
+                  web_oficial: { type: "string" },
+                },
+              },
+              notas: { type: "string" },
+            },
+            required: ["nombre"],
+          },
+        },
+      },
+      required: ["slug"],
+    },
+  },
+  {
+    name: "set_debilidades",
+    description:
+      "Actualiza el slide Debilidades / Auditoría de riesgos. Args:\n• fuentes: array — auditoría de las 4 fuentes estándar. Cada una: {key, estado, hallazgos?}\n  - key: 'denuncias' | 'google' | 'reputacion_redes' | 'jne_observaciones'\n  - estado: 'ok' | 'review' | 'flag' (ok=limpio, review=por auditar, flag=alto riesgo)\n  - hallazgos: array de strings con findings específicos\n• lista_libre: array de debilidades adicionales — {titulo, descripcion?, severidad: 'baja'|'media'|'alta'}",
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: { type: "string" },
+        fuentes: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              key: {
+                type: "string",
+                enum: ["denuncias", "google", "reputacion_redes", "jne_observaciones"],
+              },
+              estado: { type: "string", enum: ["ok", "review", "flag"] },
+              hallazgos: { type: "array", items: { type: "string" } },
+            },
+            required: ["key", "estado"],
+          },
+        },
+        lista_libre: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              titulo: { type: "string" },
+              descripcion: { type: "string" },
+              severidad: { type: "string", enum: ["baja", "media", "alta"] },
+            },
+            required: ["titulo", "severidad"],
+          },
+        },
+      },
+      required: ["slug"],
+    },
+  },
+  {
+    name: "set_analisis_electoral",
+    description:
+      "Actualiza el slide Análisis Electoral (Sección 3). Args:\n• comentario_consultor: lectura de los resultados últimos (1-3 frases)\n• ranking_partido_zona: int — posición del partido en la zona (1=primero)",
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: { type: "string" },
+        comentario_consultor: { type: "string" },
+        ranking_partido_zona: { type: "integer", minimum: 1 },
+      },
+      required: ["slug"],
+    },
+  },
+
   {
     name: "record_note",
     description:
@@ -558,7 +726,7 @@ const TOOLS = [
 const server = new Server(
   {
     name: "goberna-mcp",
-    version: "0.6.0",
+    version: "0.7.0",
   },
   {
     capabilities: {
@@ -1494,6 +1662,64 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                   sections_touched: sectionsTouched,
                   updated_at: data.deck?.updated_at,
                   message: `Actualizado: ${sectionsTouched.join(", ")}. El cambio ya está en producción — el consultor puede refrescar el browser para ver.`,
+                },
+                null,
+                0,
+              ),
+            },
+          ],
+        };
+      }
+
+      // ── Per-section helpers ──────────────────────────────────────────
+      case "set_ficha_basica":
+      case "set_quien_es":
+      case "set_votos_para_ganar":
+      case "set_formula_electoral":
+      case "set_analisis_electoral":
+      case "set_redes_sociales":
+      case "set_debilidades": {
+        const sectionMap = {
+          set_ficha_basica: "ficha_basica",
+          set_quien_es: "quien_es",
+          set_votos_para_ganar: "votos_para_ganar",
+          set_formula_electoral: "formula_electoral",
+          set_analisis_electoral: "analisis_electoral",
+          set_redes_sociales: "redes_sociales",
+          set_debilidades: "debilidades",
+        };
+        const section = sectionMap[name];
+        const { slug, ...payload } = args;
+        if (typeof slug !== "string" || slug.length < 1) {
+          throw new Error("slug requerido");
+        }
+        // Limpiar undefined del payload (campos no pasados) y normalizar
+        // strings vacíos: para top-level les damos undefined (el backend
+        // los borra al hacer merge ya que jsonb || filtra null).
+        const cleanPayload = {};
+        for (const [k, v] of Object.entries(payload)) {
+          if (v === undefined) continue;
+          cleanPayload[k] = v;
+        }
+        const patch = { [section]: cleanPayload };
+        const data = await api(
+          `/api/consultor/fase2/by-candidato/${encodeURIComponent(slug)}/form`,
+          {
+            method: "PATCH",
+            body: JSON.stringify(patch),
+          },
+        );
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  ok: data.ok,
+                  section,
+                  fields_updated: Object.keys(cleanPayload),
+                  updated_at: data.deck?.updated_at,
+                  message: `✅ ${section} actualizado (${Object.keys(cleanPayload).length} campos). El admin route refresca en ≤4s.`,
                 },
                 null,
                 0,
